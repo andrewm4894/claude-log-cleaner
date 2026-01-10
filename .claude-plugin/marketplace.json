@@ -10,7 +10,7 @@
     {
       "name": "log-cleaner",
       "description": "Auto-delete Claude Code session logs after configurable retention period to prevent sensitive data exposure",
-      "version": "2.5.0",
+      "version": "2.6.0",
       "category": "security",
       "source": "./plugins/log-cleaner",
       "homepage": "https://github.com/andrewm4894/claude-log-cleaner"
