@@ -121,6 +121,8 @@ The plugin creates a config file at `~/.claude/log-cleaner-config.json`:
 | `clean_optional_dirs` | false | Include projects, todos, plans in cleanup |
 | `dry_run` | false | Preview mode (no actual deletion) |
 
+**Note:** Config values are used as defaults. CLI flags (`--dry-run`, `--all`) override the corresponding config values for that run.
+
 ## What Gets Cleaned
 
 ### Default Directories (always cleaned)
