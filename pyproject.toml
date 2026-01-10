@@ -1,6 +1,6 @@
 [project]
 name = "claude-log-cleaner"
-version = "2.3.0"
+version = "2.4.0"
 description = "Claude Code plugin that automatically deletes session logs to prevent sensitive data exposure"
 readme = "README.md"
 license = { text = "MIT" }
