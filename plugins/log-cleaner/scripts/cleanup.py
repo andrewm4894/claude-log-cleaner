@@ -272,8 +272,62 @@ SECRET_PATTERNS = {
 PRIVATE_KEY_PATTERN = re.compile(r"-----BEGIN .* PRIVATE KEY-----")
 
 
+def find_secrets_in_directories(
+    directories: List[Path],
+) -> Dict[str, set]:
+    """
+    Scan directories for secrets and return findings.
+
+    Args:
+        directories: List of directory paths to scan
+
+    Returns:
+        Dict mapping pattern names to sets of found secrets.
+        Special key "Private Key Files" contains file paths with private keys.
+    """
+    results: Dict[str, set] = {name: set() for name in SECRET_PATTERNS}
+    results["Private Key Files"] = set()
+
+    # Compile patterns
+    compiled_patterns = {
+        name: re.compile(pattern) for name, pattern in SECRET_PATTERNS.items()
+    }
+
+    for scan_dir in directories:
+        if not scan_dir.exists():
+            continue
+
+        try:
+            for file_path in scan_dir.rglob("*"):
+                if not file_path.is_file():
+                    continue
+
+                try:
+                    content = file_path.read_text(errors="ignore")
+
+                    # Check each secret pattern
+                    for pattern_name, pattern in compiled_patterns.items():
+                        matches = pattern.findall(content)
+                        for match in matches:
+                            # Filter out "Redacted" for bearer tokens
+                            if "Bearer" in pattern_name and "Redacted" in match:
+                                continue
+                            results[pattern_name].add(match)
+
+                    # Check for private keys
+                    if PRIVATE_KEY_PATTERN.search(content):
+                        results["Private Key Files"].add(str(file_path))
+
+                except (OSError, IOError):
+                    continue
+        except OSError:
+            continue
+
+    return results
+
+
 def scan_secrets() -> None:
-    """Scan log directories for potential secrets."""
+    """Scan log directories for potential secrets and print results."""
     print("Scanning for potential secrets in Claude Code logs...")
     print("")
 
@@ -287,31 +341,13 @@ def scan_secrets() -> None:
     print(f"Scanning directories: {', '.join(d.name for d in scan_dirs)}")
     print("")
 
-    # Compile patterns
-    compiled_patterns = {name: re.compile(pattern) for name, pattern in SECRET_PATTERNS.items()}
+    # Get results
+    results = find_secrets_in_directories(scan_dirs)
 
-    # Scan for each pattern type
-    for pattern_name, pattern in compiled_patterns.items():
+    # Print results for each pattern type
+    for pattern_name in SECRET_PATTERNS:
         print(f"=== {pattern_name} ===")
-        found = set()
-
-        for scan_dir in scan_dirs:
-            try:
-                for file_path in scan_dir.rglob("*"):
-                    if file_path.is_file():
-                        try:
-                            content = file_path.read_text(errors="ignore")
-                            matches = pattern.findall(content)
-                            for match in matches:
-                                # Filter out "Redacted" for bearer tokens
-                                if "Bearer" in pattern_name and "Redacted" in match:
-                                    continue
-                                found.add(match)
-                        except (OSError, IOError):
-                            continue
-            except OSError:
-                continue
-
+        found = results[pattern_name]
         if found:
             for secret in sorted(found)[:10]:  # Limit to 10
                 print(secret)
@@ -319,25 +355,11 @@ def scan_secrets() -> None:
             print("None found")
         print("")
 
-    # Scan for private keys (just report files)
+    # Print private key files
     print("=== Private Keys ===")
-    key_files = []
-
-    for scan_dir in scan_dirs:
-        try:
-            for file_path in scan_dir.rglob("*"):
-                if file_path.is_file():
-                    try:
-                        content = file_path.read_text(errors="ignore")
-                        if PRIVATE_KEY_PATTERN.search(content):
-                            key_files.append(str(file_path))
-                    except (OSError, IOError):
-                        continue
-        except OSError:
-            continue
-
+    key_files = results["Private Key Files"]
     if key_files:
-        for f in key_files[:5]:  # Limit to 5
+        for f in sorted(key_files)[:5]:  # Limit to 5
             print(f)
     else:
         print("None found")
