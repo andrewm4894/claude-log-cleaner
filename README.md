@@ -34,6 +34,30 @@ This plugin helps you maintain security hygiene by automatically cleaning up old
 /plugin update log-cleaner@log-cleaner-marketplace
 ```
 
+### Uninstalling
+
+```
+# Uninstall the plugin
+/plugin uninstall log-cleaner
+
+# Remove the marketplace (optional)
+/plugin marketplace remove log-cleaner-marketplace
+```
+
+### Reinstalling (fresh install)
+
+If updates aren't working, try a full reinstall:
+
+```
+# Remove everything
+/plugin uninstall log-cleaner
+/plugin marketplace remove log-cleaner-marketplace
+
+# Reinstall
+/plugin marketplace add andrewm4894/claude-log-cleaner
+/plugin install log-cleaner@log-cleaner-marketplace
+```
+
 ### Local Development
 
 ```bash
