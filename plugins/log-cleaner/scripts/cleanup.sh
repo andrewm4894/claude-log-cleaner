@@ -45,6 +45,21 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1" >&2
 }
 
+# Get a boolean config value (returns "true" or "false")
+get_config_bool() {
+    local key="$1"
+    local default="$2"
+    if [[ -f "$CONFIG_FILE" ]]; then
+        local value
+        value=$(grep -o "\"${key}\"[[:space:]]*:[[:space:]]*\(true\|false\)" "$CONFIG_FILE" 2>/dev/null | grep -o '\(true\|false\)' || echo "")
+        if [[ -n "$value" ]]; then
+            echo "$value"
+            return
+        fi
+    fi
+    echo "$default"
+}
+
 # Get retention hours from config or use default
 get_retention_hours() {
     if [[ -f "$CONFIG_FILE" ]]; then
@@ -115,9 +130,9 @@ clean_directory() {
         size_freed=$((size_freed + file_size))
     done <<< "$file_list"
 
-    # Clean empty directories
+    # Clean empty directories (but preserve top-level dir)
     if [[ "$dry_run" != "true" ]]; then
-        find "$full_path" -type d -empty -delete 2>/dev/null || true
+        find "$full_path" -mindepth 1 -type d -empty -delete 2>/dev/null || true
     fi
 
     if [[ $count -gt 0 ]]; then
@@ -137,8 +152,14 @@ clean_directory() {
 cleanup() {
     local dry_run="${1:-false}"
     local include_optional="${2:-false}"
+    local retention_override="${3:-}"
     local retention_hours
-    retention_hours=$(get_retention_hours)
+
+    if [[ -n "$retention_override" ]]; then
+        retention_hours="$retention_override"
+    else
+        retention_hours=$(get_retention_hours)
+    fi
 
     log_info "Starting cleanup (retention: ${retention_hours}h, dry_run: ${dry_run})"
 
@@ -246,9 +267,10 @@ EOF
 # Parse command line arguments
 main() {
     local command="clean"
-    local dry_run="false"
-    local include_optional="false"
+    local dry_run=""
+    local include_optional=""
     local custom_hours=""
+    local session_end="false"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -293,6 +315,10 @@ main() {
                     exit 1
                 fi
                 ;;
+            --session-end)
+                session_end="true"
+                shift
+                ;;
             *)
                 log_error "Unknown option: $1"
                 usage
@@ -304,19 +330,28 @@ main() {
     # Create default config if needed
     create_default_config
 
+    # If called from session end hook, check if cleanup is enabled
+    if [[ "$session_end" == "true" ]]; then
+        local clean_on_session_end
+        clean_on_session_end=$(get_config_bool "clean_on_session_end" "true")
+        if [[ "$clean_on_session_end" != "true" ]]; then
+            log_info "Cleanup on session end is disabled in config"
+            exit 0
+        fi
+    fi
+
+    # Use config values as defaults if CLI flags not provided
+    if [[ -z "$dry_run" ]]; then
+        dry_run=$(get_config_bool "dry_run" "false")
+    fi
+    if [[ -z "$include_optional" ]]; then
+        include_optional=$(get_config_bool "clean_optional_dirs" "false")
+    fi
+
     # Execute command
     case "$command" in
         clean)
-            if [[ -n "$custom_hours" ]]; then
-                # Temporarily override retention
-                local orig_config
-                orig_config=$(cat "$CONFIG_FILE")
-                set_retention "$custom_hours"
-                cleanup "$dry_run" "$include_optional"
-                echo "$orig_config" > "$CONFIG_FILE"
-            else
-                cleanup "$dry_run" "$include_optional"
-            fi
+            cleanup "$dry_run" "$include_optional" "$custom_hours"
             ;;
         status)
             show_status
