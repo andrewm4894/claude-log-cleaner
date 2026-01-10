@@ -14,7 +14,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "plugins" / "log-cleaner" / "scripts"))
 
-import cleanup
+import config
+import secret_scanner
 
 
 # =============================================================================
@@ -247,56 +248,56 @@ class TestSecretDetectionEndToEnd:
     def test_detects_openai_key(self, mock_claude_logs):
         """Should detect OpenAI API key in session log."""
         claude_dir, _ = mock_claude_logs
-        results = cleanup.find_secrets_in_directories([claude_dir / "projects"])
+        results = secret_scanner.find_secrets_in_directories([claude_dir / "projects"])
 
         assert secret_found_in_results(FAKE_SECRETS["openai_key"], results)
 
     def test_detects_anthropic_key(self, mock_claude_logs):
         """Should detect Anthropic API key in debug log."""
         claude_dir, _ = mock_claude_logs
-        results = cleanup.find_secrets_in_directories([claude_dir / "debug"])
+        results = secret_scanner.find_secrets_in_directories([claude_dir / "debug"])
 
         assert secret_found_in_results(FAKE_SECRETS["anthropic_key"], results)
 
     def test_detects_github_token(self, mock_claude_logs):
         """Should detect GitHub PAT in git error output."""
         claude_dir, _ = mock_claude_logs
-        results = cleanup.find_secrets_in_directories([claude_dir / "projects"])
+        results = secret_scanner.find_secrets_in_directories([claude_dir / "projects"])
 
         assert secret_found_in_results(FAKE_SECRETS["github_pat"], results)
 
     def test_detects_aws_key(self, mock_claude_logs):
         """Should detect AWS access key in file history."""
         claude_dir, _ = mock_claude_logs
-        results = cleanup.find_secrets_in_directories([claude_dir / "file-history"])
+        results = secret_scanner.find_secrets_in_directories([claude_dir / "file-history"])
 
         assert secret_found_in_results(FAKE_SECRETS["aws_access_key"], results)
 
     def test_detects_posthog_key(self, mock_claude_logs):
         """Should detect PostHog project key."""
         claude_dir, _ = mock_claude_logs
-        results = cleanup.find_secrets_in_directories([claude_dir / "projects"])
+        results = secret_scanner.find_secrets_in_directories([claude_dir / "projects"])
 
         assert secret_found_in_results(FAKE_SECRETS["posthog_key"], results)
 
     def test_detects_slack_token(self, mock_claude_logs):
         """Should detect Slack bot token in shell snapshot."""
         claude_dir, _ = mock_claude_logs
-        results = cleanup.find_secrets_in_directories([claude_dir / "shell-snapshots"])
+        results = secret_scanner.find_secrets_in_directories([claude_dir / "shell-snapshots"])
 
         assert secret_found_in_results(FAKE_SECRETS["slack_bot_token"], results)
 
     def test_detects_bearer_token(self, mock_claude_logs):
         """Should detect Bearer token in API response."""
         claude_dir, _ = mock_claude_logs
-        results = cleanup.find_secrets_in_directories([claude_dir / "projects"])
+        results = secret_scanner.find_secrets_in_directories([claude_dir / "projects"])
 
         assert secret_found_in_results(FAKE_SECRETS["bearer_token"], results)
 
     def test_detects_private_key_file(self, mock_claude_logs):
         """Should detect file containing private key."""
         claude_dir, secret_locations = mock_claude_logs
-        results = cleanup.find_secrets_in_directories([claude_dir / "plans"])
+        results = secret_scanner.find_secrets_in_directories([claude_dir / "plans"])
 
         assert secret_locations["private_key"] in results["Private Key Files"]
 
@@ -305,8 +306,8 @@ class TestSecretDetectionEndToEnd:
         claude_dir, _ = mock_claude_logs
 
         # Scan all directories at once
-        all_dirs = [claude_dir / d for d in cleanup.CLEAN_DIRS]
-        results = cleanup.find_secrets_in_directories(all_dirs)
+        all_dirs = [claude_dir / d for d in config.CLEAN_DIRS]
+        results = secret_scanner.find_secrets_in_directories(all_dirs)
 
         # Verify we found multiple types of secrets
         # With detect-secrets, keys may be under different names
@@ -323,13 +324,13 @@ class TestSecretDetectionEndToEnd:
         empty_dir.mkdir()
         (empty_dir / "clean.txt").write_text("No secrets here, just regular content.")
 
-        results = cleanup.find_secrets_in_directories([empty_dir])
+        results = secret_scanner.find_secrets_in_directories([empty_dir])
 
         assert any_secrets_found(results) == 0
 
     def test_nonexistent_directory_handled(self, tmp_path):
         """Should handle nonexistent directories gracefully."""
-        results = cleanup.find_secrets_in_directories([tmp_path / "nonexistent"])
+        results = secret_scanner.find_secrets_in_directories([tmp_path / "nonexistent"])
 
         assert any_secrets_found(results) == 0
 
@@ -343,7 +344,7 @@ class TestSecretPatternEdgeCases:
         test_dir.mkdir()
         (test_dir / "short.txt").write_text("sk-short ghp_short AKIA123")
 
-        results = cleanup.find_secrets_in_directories([test_dir])
+        results = secret_scanner.find_secrets_in_directories([test_dir])
 
         # Short keys shouldn't match any pattern
         assert any_secrets_found(results) == 0
@@ -354,7 +355,7 @@ class TestSecretPatternEdgeCases:
         test_dir.mkdir()
         (test_dir / "redacted.txt").write_text("Bearer [Redacted-token-placeholder-here]")
 
-        results = cleanup.find_secrets_in_directories([test_dir])
+        results = secret_scanner.find_secrets_in_directories([test_dir])
 
         # Redacted tokens should not be found
         assert not secret_found_in_results("Bearer [Redacted-token-placeholder-here]", results)
@@ -370,7 +371,7 @@ AWS_KEY={FAKE_SECRETS["aws_access_key"]}
 """
         (test_dir / "multi.env").write_text(content)
 
-        results = cleanup.find_secrets_in_directories([test_dir])
+        results = secret_scanner.find_secrets_in_directories([test_dir])
 
         assert secret_found_in_results(FAKE_SECRETS["openai_key"], results)
         assert secret_found_in_results(FAKE_SECRETS["github_pat"], results)
@@ -385,7 +386,7 @@ AWS_KEY={FAKE_SECRETS["aws_access_key"]}
         for i in range(3):
             (test_dir / f"file{i}.txt").write_text(FAKE_SECRETS["openai_key"])
 
-        results = cleanup.find_secrets_in_directories([test_dir])
+        results = secret_scanner.find_secrets_in_directories([test_dir])
 
         # Should only appear once (it's a set)
         assert secret_found_in_results(FAKE_SECRETS["openai_key"], results)
@@ -413,7 +414,7 @@ SECRET_KEY=not-a-real-pattern-match
         ])
         (test_dir / "session.jsonl").write_text(session)
 
-        results = cleanup.find_secrets_in_directories([test_dir])
+        results = secret_scanner.find_secrets_in_directories([test_dir])
 
         assert secret_found_in_results(FAKE_SECRETS["openai_key"], results)
         assert secret_found_in_results(FAKE_SECRETS["github_pat"], results)
@@ -433,7 +434,7 @@ SECRET_KEY=not-a-real-pattern-match
         ])
         (test_dir / "session.jsonl").write_text(session)
 
-        results = cleanup.find_secrets_in_directories([test_dir])
+        results = secret_scanner.find_secrets_in_directories([test_dir])
 
         assert secret_found_in_results(FAKE_SECRETS["anthropic_key"], results)
 
@@ -451,7 +452,7 @@ password={FAKE_SECRETS["github_pat"]}
 """
         (test_dir / "debug.log").write_text(debug_log)
 
-        results = cleanup.find_secrets_in_directories([test_dir])
+        results = secret_scanner.find_secrets_in_directories([test_dir])
 
         assert secret_found_in_results(FAKE_SECRETS["github_pat"], results)
 
@@ -465,7 +466,7 @@ class TestFalsePositiveFiltering:
         test_dir.mkdir()
         (test_dir / "example.txt").write_text("AWS_KEY=AKIAIOSFODNN7EXAMPLE")
 
-        results = cleanup.find_secrets_in_directories([test_dir])
+        results = secret_scanner.find_secrets_in_directories([test_dir])
 
         assert not secret_found_in_results("AKIAIOSFODNN7EXAMPLE", results)
 
@@ -480,7 +481,7 @@ class TestFalsePositiveFiltering:
         """
         (test_dir / "styles.txt").write_text(content)
 
-        results = cleanup.find_secrets_in_directories([test_dir])
+        results = secret_scanner.find_secrets_in_directories([test_dir])
 
         # CSS class names should not be detected as secrets
         assert not secret_found_in_results("sk-execution-component-dark", results)
@@ -496,7 +497,7 @@ class TestFalsePositiveFiltering:
         """
         (test_dir / "placeholders.txt").write_text(content)
 
-        results = cleanup.find_secrets_in_directories([test_dir])
+        results = secret_scanner.find_secrets_in_directories([test_dir])
 
         # Placeholder patterns should not be detected
         assert not secret_found_in_results("sk-xxxxxxxxxxxxxxxxxxxx", results)
@@ -508,24 +509,24 @@ class TestFalsePositiveFiltering:
         test_dir.mkdir()
         (test_dir / "real.txt").write_text(FAKE_SECRETS["openai_key"])
 
-        results = cleanup.find_secrets_in_directories([test_dir])
+        results = secret_scanner.find_secrets_in_directories([test_dir])
 
         assert secret_found_in_results(FAKE_SECRETS["openai_key"], results)
 
     def test_is_false_positive_function(self):
         """Test the is_false_positive function directly."""
         # Should be filtered
-        assert cleanup.is_false_positive("AKIAIOSFODNN7EXAMPLE") is True
-        assert cleanup.is_false_positive("sk-1234567890abcdefghij") is True
-        assert cleanup.is_false_positive("sk-xxxxxxxxxxxxxxxxxxxx") is True
-        assert cleanup.is_false_positive("sk-test-component-dark") is True
-        assert cleanup.is_false_positive("sk-execution-container-light") is True
-        assert cleanup.is_false_positive("sk-testkey1234567890abc") is True
+        assert secret_scanner.is_false_positive("AKIAIOSFODNN7EXAMPLE") is True
+        assert secret_scanner.is_false_positive("sk-1234567890abcdefghij") is True
+        assert secret_scanner.is_false_positive("sk-xxxxxxxxxxxxxxxxxxxx") is True
+        assert secret_scanner.is_false_positive("sk-test-component-dark") is True
+        assert secret_scanner.is_false_positive("sk-execution-container-light") is True
+        assert secret_scanner.is_false_positive("sk-testkey1234567890abc") is True
 
         # Should not be filtered (real-looking keys)
-        assert cleanup.is_false_positive(FAKE_SECRETS["openai_key"]) is False
-        assert cleanup.is_false_positive(FAKE_SECRETS["anthropic_key"]) is False
-        assert cleanup.is_false_positive(FAKE_SECRETS["aws_access_key"]) is False
+        assert secret_scanner.is_false_positive(FAKE_SECRETS["openai_key"]) is False
+        assert secret_scanner.is_false_positive(FAKE_SECRETS["anthropic_key"]) is False
+        assert secret_scanner.is_false_positive(FAKE_SECRETS["aws_access_key"]) is False
 
 
 class TestTruffleHogIntegration:
@@ -533,18 +534,20 @@ class TestTruffleHogIntegration:
 
     def test_trufflehog_availability_check(self, monkeypatch):
         """Test that TruffleHog availability is detected correctly."""
+        import shutil
         # Mock shutil.which to return a path (TruffleHog installed)
         monkeypatch.setattr("shutil.which", lambda x: "/opt/homebrew/bin/trufflehog" if x == "trufflehog" else None)
 
         # Re-evaluate the module-level check
-        result = cleanup.shutil.which("trufflehog")
+        result = shutil.which("trufflehog")
         assert result == "/opt/homebrew/bin/trufflehog"
 
     def test_trufflehog_not_available(self, monkeypatch):
         """Test handling when TruffleHog is not installed."""
+        import shutil
         monkeypatch.setattr("shutil.which", lambda x: None)
 
-        result = cleanup.shutil.which("trufflehog")
+        result = shutil.which("trufflehog")
         assert result is None
 
     def test_scan_with_trufflehog_parses_json(self, tmp_path, monkeypatch):
@@ -588,7 +591,7 @@ class TestTruffleHogIntegration:
 
         monkeypatch.setattr("subprocess.run", mock_run)
 
-        results = cleanup.scan_with_trufflehog([test_dir])
+        results = secret_scanner.scan_with_trufflehog([test_dir])
 
         # Verify AWS key was found
         assert "AWS" in results
@@ -610,7 +613,7 @@ class TestTruffleHogIntegration:
 
         monkeypatch.setattr("subprocess.run", mock_run)
 
-        results = cleanup.scan_with_trufflehog([tmp_path])
+        results = secret_scanner.scan_with_trufflehog([tmp_path])
 
         # Should return empty results on timeout
         assert results == {"Private Key Files": {}}
@@ -623,7 +626,7 @@ class TestTruffleHogIntegration:
 
         monkeypatch.setattr("subprocess.run", mock_run)
 
-        results = cleanup.scan_with_trufflehog([tmp_path])
+        results = secret_scanner.scan_with_trufflehog([tmp_path])
 
         # Should return empty results
         assert results == {"Private Key Files": {}}
@@ -648,7 +651,7 @@ class TestTruffleHogIntegration:
 
         monkeypatch.setattr("subprocess.run", lambda *a, **kw: MockResult())
 
-        results = cleanup.scan_with_trufflehog([test_dir])
+        results = secret_scanner.scan_with_trufflehog([test_dir])
 
         # False positive should be filtered out
         assert "AWS" not in results or "AKIAIOSFODNN7EXAMPLE" not in results.get("AWS", set())
@@ -671,12 +674,12 @@ class TestTruffleHogIntegration:
             return {}
 
         # Enable both TruffleHog and detect-secrets
-        monkeypatch.setattr(cleanup, "TRUFFLEHOG_AVAILABLE", True)
-        monkeypatch.setattr(cleanup, "DETECT_SECRETS_AVAILABLE", True)
-        monkeypatch.setattr(cleanup, "scan_with_trufflehog", mock_trufflehog)
-        monkeypatch.setattr(cleanup, "scan_file_with_detect_secrets", mock_detect_secrets)
+        monkeypatch.setattr(secret_scanner, "TRUFFLEHOG_AVAILABLE", True)
+        monkeypatch.setattr(secret_scanner, "DETECT_SECRETS_AVAILABLE", True)
+        monkeypatch.setattr(secret_scanner, "scan_with_trufflehog", mock_trufflehog)
+        monkeypatch.setattr(secret_scanner, "scan_file_with_detect_secrets", mock_detect_secrets)
 
-        cleanup.find_secrets_in_directories([test_dir])
+        secret_scanner.find_secrets_in_directories([test_dir])
 
         # All available scanners should be called
         assert "trufflehog" in scanners_called
@@ -695,11 +698,11 @@ class TestTruffleHogIntegration:
             return {}
 
         # Disable TruffleHog, enable detect-secrets
-        monkeypatch.setattr(cleanup, "TRUFFLEHOG_AVAILABLE", False)
-        monkeypatch.setattr(cleanup, "DETECT_SECRETS_AVAILABLE", True)
-        monkeypatch.setattr(cleanup, "scan_file_with_detect_secrets", mock_detect_secrets)
+        monkeypatch.setattr(secret_scanner, "TRUFFLEHOG_AVAILABLE", False)
+        monkeypatch.setattr(secret_scanner, "DETECT_SECRETS_AVAILABLE", True)
+        monkeypatch.setattr(secret_scanner, "scan_file_with_detect_secrets", mock_detect_secrets)
 
-        cleanup.find_secrets_in_directories([test_dir])
+        secret_scanner.find_secrets_in_directories([test_dir])
 
         # detect-secrets should be called
         assert "detect_secrets" in scanners_called

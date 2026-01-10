@@ -11,27 +11,30 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "plugins" / "log-cleaner" / "scripts"))
 
 import cleanup
+import config
+import utils
+import secret_scanner
 
 
 class TestFormatSize:
     """Tests for format_size function."""
 
     def test_bytes(self):
-        assert cleanup.format_size(0) == "0 B"
-        assert cleanup.format_size(100) == "100 B"
-        assert cleanup.format_size(1023) == "1023 B"
+        assert utils.format_size(0) == "0 B"
+        assert utils.format_size(100) == "100 B"
+        assert utils.format_size(1023) == "1023 B"
 
     def test_kilobytes(self):
-        assert cleanup.format_size(1024) == "1.0 KB"
-        assert cleanup.format_size(1536) == "1.5 KB"
-        assert cleanup.format_size(10240) == "10.0 KB"
+        assert utils.format_size(1024) == "1.0 KB"
+        assert utils.format_size(1536) == "1.5 KB"
+        assert utils.format_size(10240) == "10.0 KB"
 
     def test_megabytes(self):
-        assert cleanup.format_size(1024 * 1024) == "1.0 MB"
-        assert cleanup.format_size(1024 * 1024 * 5) == "5.0 MB"
+        assert utils.format_size(1024 * 1024) == "1.0 MB"
+        assert utils.format_size(1024 * 1024 * 5) == "5.0 MB"
 
     def test_gigabytes(self):
-        assert cleanup.format_size(1024 * 1024 * 1024) == "1.0 GB"
+        assert utils.format_size(1024 * 1024 * 1024) == "1.0 GB"
 
 
 class TestConfig:
@@ -39,34 +42,34 @@ class TestConfig:
 
     def test_load_config_default_when_missing(self, temp_claude_dir):
         """Should return defaults when config file doesn't exist."""
-        config = cleanup.load_config()
-        assert config["retention_hours"] == 24
-        assert config["clean_on_session_end"] is True
-        assert config["dry_run"] is False
+        loaded_config = config.load_config()
+        assert loaded_config["retention_hours"] == 24
+        assert loaded_config["clean_on_session_end"] is True
+        assert loaded_config["dry_run"] is False
 
     def test_save_and_load_config(self, temp_claude_dir):
         """Should save and load config correctly."""
-        config = {
+        test_config = {
             "retention_hours": 48,
             "clean_on_session_end": False,
             "dry_run": True,
         }
-        cleanup.save_config(config)
+        config.save_config(test_config)
 
-        loaded = cleanup.load_config()
+        loaded = config.load_config()
         assert loaded["retention_hours"] == 48
         assert loaded["clean_on_session_end"] is False
         assert loaded["dry_run"] is True
 
     def test_create_default_config(self, temp_claude_dir):
         """Should create default config file."""
-        assert not cleanup.CONFIG_FILE.exists()
-        cleanup.create_default_config()
-        assert cleanup.CONFIG_FILE.exists()
+        assert not config.CONFIG_FILE.exists()
+        config.create_default_config()
+        assert config.CONFIG_FILE.exists()
 
-        with open(cleanup.CONFIG_FILE) as f:
-            config = json.load(f)
-        assert config["retention_hours"] == 24
+        with open(config.CONFIG_FILE) as f:
+            loaded_config = json.load(f)
+        assert loaded_config["retention_hours"] == 24
 
 
 class TestFindOldFiles:
@@ -163,7 +166,7 @@ class TestSecretPatterns:
     def test_openai_key_pattern(self):
         """Should match OpenAI API keys."""
         import re
-        pattern = re.compile(cleanup.BUILTIN_PATTERNS["OpenAI/Anthropic API Keys"])
+        pattern = re.compile(secret_scanner.BUILTIN_PATTERNS["OpenAI/Anthropic API Keys"])
 
         assert pattern.search("sk-1234567890abcdefghij")
         assert pattern.search("sk-proj-" + "a" * 50)
@@ -173,7 +176,7 @@ class TestSecretPatterns:
     def test_github_token_pattern(self):
         """Should match GitHub tokens."""
         import re
-        pattern = re.compile(cleanup.BUILTIN_PATTERNS["GitHub Tokens"])
+        pattern = re.compile(secret_scanner.BUILTIN_PATTERNS["GitHub Tokens"])
 
         assert pattern.search("ghp_" + "a" * 36)
         assert pattern.search("gho_" + "a" * 36)
@@ -183,7 +186,7 @@ class TestSecretPatterns:
     def test_aws_key_pattern(self):
         """Should match AWS access keys."""
         import re
-        pattern = re.compile(cleanup.BUILTIN_PATTERNS["AWS Keys"])
+        pattern = re.compile(secret_scanner.BUILTIN_PATTERNS["AWS Keys"])
 
         assert pattern.search("AKIAIOSFODNN7EXAMPLE")
         assert not pattern.search("AKIA123")  # Too short
@@ -191,7 +194,7 @@ class TestSecretPatterns:
     def test_posthog_key_pattern(self):
         """Should match PostHog keys."""
         import re
-        pattern = re.compile(cleanup.BUILTIN_PATTERNS["PostHog Keys"])
+        pattern = re.compile(secret_scanner.BUILTIN_PATTERNS["PostHog Keys"])
 
         assert pattern.search("phc_" + "a" * 30)
         assert pattern.search("phx_" + "a" * 30)

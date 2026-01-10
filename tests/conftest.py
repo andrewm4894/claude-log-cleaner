@@ -22,10 +22,16 @@ def temp_claude_dir(tmp_path, monkeypatch):
     for subdir in ["debug", "file-history", "projects", "todos", "plans", "shell-snapshots"]:
         (claude_dir / subdir).mkdir()
 
-    # Patch the CLAUDE_DIR in the cleanup module
+    # Patch the CLAUDE_DIR and CONFIG_FILE in the config module
+    import config
     import cleanup
+
+    # Patch config module (source of truth)
+    monkeypatch.setattr(config, "CLAUDE_DIR", claude_dir)
+    monkeypatch.setattr(config, "CONFIG_FILE", claude_dir / "log-cleaner-config.json")
+
+    # Also patch cleanup module (imports from config at load time)
     monkeypatch.setattr(cleanup, "CLAUDE_DIR", claude_dir)
-    monkeypatch.setattr(cleanup, "CONFIG_FILE", claude_dir / "log-cleaner-config.json")
 
     return claude_dir
 
