@@ -15,7 +15,8 @@ plugins/log-cleaner/
 
 ## Architecture
 
-- **All cleanup logic is in `cleanup.py`** - Python 3.8+, stdlib only. Handles cleanup, status, retention config, and secret scanning.
+- **All cleanup logic is in `cleanup.py`** - Python 3.8+, handles cleanup, status, retention config, and secret scanning
+- **Secret scanning** - Uses [detect-secrets](https://github.com/Yelp/detect-secrets) if installed (20+ secret types), falls back to built-in patterns
 - **Commands are markdown files** - Each `.md` in `commands/` defines a slash command that delegates to `cleanup.py`
 - **Hook runs on session end** - `hooks.json` triggers `cleanup.py clean` when Claude Code session ends
 - **Config stored in `~/.claude/log-cleaner-config.json`** - Created on first run with defaults
@@ -26,6 +27,9 @@ plugins/log-cleaner/
 ```bash
 # Install dependencies
 uv sync
+
+# Optional: Install detect-secrets for enhanced scanning
+pip install detect-secrets
 
 # Load plugin in Claude Code
 claude --plugin-dir /path/to/claude-log-cleaner/plugins/log-cleaner
@@ -52,7 +56,7 @@ uv run pytest --cov=plugins/log-cleaner/scripts --cov-report=term-missing
 
 ## Coding Style
 
-- **Python**: Use type hints, keep functions focused, stdlib only
+- **Python**: Use type hints, keep functions focused, prefer stdlib (optional deps must have graceful fallback)
 - **Commands**: Markdown files in `commands/` are kebab-case, map to `/log-cleaner:<command>`
 - **Config**: Keys use snake_case (e.g., `retention_hours`)
 

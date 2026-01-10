@@ -16,7 +16,18 @@ This plugin helps you maintain security hygiene by automatically cleaning up old
 
 ## Requirements
 
-- Python 3.8+ (uses stdlib only, no additional packages needed)
+- Python 3.8+
+- Optional: `detect-secrets` for enhanced secret scanning (20+ secret types)
+
+### Enhanced Scanning (Optional)
+
+For improved secret detection using [Yelp's detect-secrets](https://github.com/Yelp/detect-secrets):
+
+```bash
+pip install detect-secrets
+```
+
+This enables detection of 20+ secret types including AWS, GitHub, Slack, Stripe, JWT, and more. Without it, the plugin uses built-in patterns for common secrets.
 
 ## Installation
 

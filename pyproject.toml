@@ -1,12 +1,16 @@
 [project]
 name = "claude-log-cleaner"
-version = "2.2.0"
+version = "2.3.0"
 description = "Claude Code plugin that automatically deletes session logs to prevent sensitive data exposure"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.8"
 authors = [{ name = "andrewm4894" }]
 keywords = ["claude", "security", "cleanup", "logs", "privacy"]
+dependencies = []
+
+[project.optional-dependencies]
+enhanced = ["detect-secrets>=1.5.0"]
 
 [project.urls]
 Homepage = "https://github.com/andrewm4894/claude-log-cleaner"
