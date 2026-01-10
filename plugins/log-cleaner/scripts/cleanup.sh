@@ -17,10 +17,6 @@ DEFAULT_RETENTION_HOURS=24
 CLEAN_DIRS=(
     "debug"
     "file-history"
-)
-
-# Optional directories (cleaned if --all flag is passed)
-OPTIONAL_DIRS=(
     "projects"
     "todos"
     "plans"
@@ -80,7 +76,6 @@ create_default_config() {
 {
   "retention_hours": ${DEFAULT_RETENTION_HOURS},
   "clean_on_session_end": true,
-  "clean_optional_dirs": false,
   "dry_run": false
 }
 EOF
@@ -151,8 +146,7 @@ clean_directory() {
 # Main cleanup function
 cleanup() {
     local dry_run="${1:-false}"
-    local include_optional="${2:-false}"
-    local retention_override="${3:-}"
+    local retention_override="${2:-}"
     local retention_hours
 
     if [[ -n "$retention_override" ]]; then
@@ -165,21 +159,11 @@ cleanup() {
 
     local total_files=0
 
-    # Clean main directories
     for dir in "${CLEAN_DIRS[@]}"; do
         local cleaned
         cleaned=$(clean_directory "$dir" "$retention_hours" "$dry_run")
         total_files=$((total_files + cleaned))
     done
-
-    # Clean optional directories if requested
-    if [[ "$include_optional" == "true" ]]; then
-        for dir in "${OPTIONAL_DIRS[@]}"; do
-            local cleaned
-            cleaned=$(clean_directory "$dir" "$retention_hours" "$dry_run")
-            total_files=$((total_files + cleaned))
-        done
-    fi
 
     if [[ $total_files -eq 0 ]]; then
         log_info "No files older than ${retention_hours}h found"
@@ -200,7 +184,7 @@ show_status() {
     echo ""
     echo "Directory sizes:"
 
-    for dir in "${CLEAN_DIRS[@]}" "${OPTIONAL_DIRS[@]}"; do
+    for dir in "${CLEAN_DIRS[@]}"; do
         local full_path="${CLAUDE_DIR}/${dir}"
         if [[ -d "$full_path" ]]; then
             local size
@@ -248,13 +232,12 @@ Commands:
 
 Options:
     --dry-run       Show what would be deleted without deleting
-    --all           Include optional directories (projects, todos, plans, etc.)
     --hours N       Override retention period for this run
 
 Examples:
     $(basename "$0")                    # Clean with default settings
     $(basename "$0") --dry-run          # Preview what would be deleted
-    $(basename "$0") --all              # Clean all directories
+    $(basename "$0") --hours 1          # Clean files older than 1 hour
     $(basename "$0") set-retention 48   # Set retention to 48 hours
     $(basename "$0") status             # Show current status
 
@@ -268,7 +251,6 @@ EOF
 main() {
     local command="clean"
     local dry_run=""
-    local include_optional=""
     local custom_hours=""
     local session_end="false"
 
@@ -299,10 +281,6 @@ main() {
                 ;;
             --dry-run)
                 dry_run="true"
-                shift
-                ;;
-            --all)
-                include_optional="true"
                 shift
                 ;;
             --hours)
@@ -340,18 +318,15 @@ main() {
         fi
     fi
 
-    # Use config values as defaults if CLI flags not provided
+    # Use config value as default if CLI flag not provided
     if [[ -z "$dry_run" ]]; then
         dry_run=$(get_config_bool "dry_run" "false")
-    fi
-    if [[ -z "$include_optional" ]]; then
-        include_optional=$(get_config_bool "clean_optional_dirs" "false")
     fi
 
     # Execute command
     case "$command" in
         clean)
-            cleanup "$dry_run" "$include_optional" "$custom_hours"
+            cleanup "$dry_run" "$custom_hours"
             ;;
         status)
             show_status

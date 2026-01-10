@@ -86,9 +86,6 @@ claude --plugin-dir /path/to/claude-log-cleaner/plugins/log-cleaner
 # Preview what would be deleted (dry run)
 /log-cleaner:clean --dry-run
 
-# Clean all directories including projects
-/log-cleaner:clean --all
-
 # Set retention to 48 hours
 /log-cleaner:set-retention 48
 
@@ -107,7 +104,6 @@ The plugin creates a config file at `~/.claude/log-cleaner-config.json`:
 {
   "retention_hours": 24,
   "clean_on_session_end": true,
-  "clean_optional_dirs": false,
   "dry_run": false
 }
 ```
@@ -118,20 +114,16 @@ The plugin creates a config file at `~/.claude/log-cleaner-config.json`:
 |--------|---------|-------------|
 | `retention_hours` | 24 | Hours to retain files before deletion |
 | `clean_on_session_end` | true | Auto-clean when Claude Code session ends |
-| `clean_optional_dirs` | false | Include projects, todos, plans in cleanup |
 | `dry_run` | false | Preview mode (no actual deletion) |
 
-**Note:** Config values are used as defaults. CLI flags (`--dry-run`, `--all`) override the corresponding config values for that run.
+**Note:** Config values are used as defaults. The `--dry-run` CLI flag overrides the config value for that run.
 
 ## What Gets Cleaned
 
-### Default Directories (always cleaned)
+The plugin cleans all Claude Code data directories:
 
 - `~/.claude/debug/` - Session debug logs
 - `~/.claude/file-history/` - File edit history
-
-### Optional Directories (with `--all` flag)
-
 - `~/.claude/projects/` - Project-specific data
 - `~/.claude/todos/` - Todo lists
 - `~/.claude/plans/` - Planning data

@@ -17,11 +17,9 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.sh $ARGUMENTS
 
 Available options:
 - `--dry-run` - Preview what would be deleted without actually deleting
-- `--all` - Include optional directories (projects, todos, plans)
 - `--hours N` - Override retention period for this run
 
 Examples the user might want:
 - No arguments: Run with default settings
 - `--dry-run`: See what would be deleted
-- `--all --dry-run`: Preview full cleanup
 - `--hours 1`: Delete files older than 1 hour
