@@ -11,7 +11,16 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
+
+# Try to import detect-secrets for enhanced scanning
+try:
+    from detect_secrets.core.scan import scan_file
+    from detect_secrets.settings import transient_settings
+
+    DETECT_SECRETS_AVAILABLE = True
+except ImportError:
+    DETECT_SECRETS_AVAILABLE = False
 
 # Configuration
 CLAUDE_DIR = Path.home() / ".claude"
@@ -259,8 +268,43 @@ def set_retention(hours: int) -> None:
     log_info(f"Retention period set to {hours} hours")
 
 
-# Secret scanning patterns
-SECRET_PATTERNS = {
+# =============================================================================
+# Secret Scanning Configuration
+# =============================================================================
+
+# detect-secrets plugins to use (when available)
+DETECT_SECRETS_PLUGINS = [
+    {"name": "AWSKeyDetector"},
+    {"name": "AzureStorageKeyDetector"},
+    {"name": "BasicAuthDetector"},
+    {"name": "GitHubTokenDetector"},
+    {"name": "GitLabTokenDetector"},
+    {"name": "JwtTokenDetector"},
+    {"name": "OpenAIDetector"},
+    {"name": "PrivateKeyDetector"},
+    {"name": "SendGridDetector"},
+    {"name": "SlackDetector"},
+    {"name": "StripeDetector"},
+    {"name": "TwilioKeyDetector"},
+]
+
+# Additional patterns not covered by detect-secrets (or where detect-secrets has bugs)
+# These supplement detect-secrets or serve as fallback when it's not installed
+SUPPLEMENTAL_PATTERNS = {
+    # Anthropic keys (not in detect-secrets)
+    "Anthropic API Keys": r"(sk-ant-[a-zA-Z0-9_-]{20,})",
+    # PostHog keys (not in detect-secrets)
+    "PostHog Keys": r"(phc_[a-zA-Z0-9]{30,}|phx_[a-zA-Z0-9_-]{30,})",
+    # Broader OpenAI pattern (detect-secrets only catches specific format)
+    "OpenAI API Keys": r"(sk-proj-[a-zA-Z0-9_-]{40,})",
+    # Bearer tokens in logs
+    "Bearer Tokens": r"Bearer [a-zA-Z0-9_-]{30,}",
+    # GitHub tokens (detect-secrets has a regex bug that only captures prefix)
+    "GitHub Tokens": r"((?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36}|github_pat_[a-zA-Z0-9_]{22,})",
+}
+
+# Fallback patterns when detect-secrets is not available
+FALLBACK_PATTERNS = {
     "OpenAI/Anthropic API Keys": r"(sk-[a-zA-Z0-9_-]{20,}|sk-proj-[a-zA-Z0-9_-]{50,}|sk-ant-[a-zA-Z0-9_-]{20,})",
     "PostHog Keys": r"(phc_[a-zA-Z0-9]{30,}|phx_[a-zA-Z0-9_-]{30,})",
     "GitHub Tokens": r"(ghp_[a-zA-Z0-9]{36}|gho_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9_]{22,})",
@@ -308,26 +352,68 @@ def is_false_positive(secret: str) -> bool:
     return False
 
 
-def find_secrets_in_directories(
-    directories: List[Path],
-) -> Dict[str, set]:
+def scan_file_with_detect_secrets(file_path: Path) -> Dict[str, Set[str]]:
+    """Scan a single file using detect-secrets library."""
+    results: Dict[str, Set[str]] = {}
+
+    try:
+        with transient_settings({"plugins_used": DETECT_SECRETS_PLUGINS}):
+            for secret in scan_file(str(file_path)):
+                secret_type = secret.type
+                secret_value = secret.secret_value
+
+                if secret_type not in results:
+                    results[secret_type] = set()
+
+                if not is_false_positive(secret_value):
+                    results[secret_type].add(secret_value)
+    except Exception:
+        # If detect-secrets fails on a file, skip it
+        pass
+
+    return results
+
+
+def scan_file_with_patterns(
+    file_path: Path, patterns: Dict[str, str]
+) -> Dict[str, Set[str]]:
+    """Scan a single file using regex patterns (fallback method)."""
+    results: Dict[str, Set[str]] = {name: set() for name in patterns}
+
+    try:
+        content = file_path.read_text(errors="ignore")
+        compiled = {name: re.compile(pattern) for name, pattern in patterns.items()}
+
+        for pattern_name, pattern in compiled.items():
+            matches = pattern.findall(content)
+            for match in matches:
+                # Filter out "Redacted" for bearer tokens
+                if "Bearer" in pattern_name and "Redacted" in match:
+                    continue
+                if not is_false_positive(match):
+                    results[pattern_name].add(match)
+    except (OSError, IOError):
+        pass
+
+    return results
+
+
+def find_secrets_in_directories(directories: List[Path]) -> Dict[str, Set[str]]:
     """
     Scan directories for secrets and return findings.
+
+    Uses detect-secrets library if available, with supplemental patterns.
+    Falls back to regex-only scanning if detect-secrets is not installed.
 
     Args:
         directories: List of directory paths to scan
 
     Returns:
-        Dict mapping pattern names to sets of found secrets.
+        Dict mapping secret types to sets of found secrets.
         Special key "Private Key Files" contains file paths with private keys.
     """
-    results: Dict[str, set] = {name: set() for name in SECRET_PATTERNS}
+    results: Dict[str, Set[str]] = {}
     results["Private Key Files"] = set()
-
-    # Compile patterns
-    compiled_patterns = {
-        name: re.compile(pattern) for name, pattern in SECRET_PATTERNS.items()
-    }
 
     for scan_dir in directories:
         if not scan_dir.exists():
@@ -338,27 +424,38 @@ def find_secrets_in_directories(
                 if not file_path.is_file():
                     continue
 
+                # Use detect-secrets if available
+                if DETECT_SECRETS_AVAILABLE:
+                    file_results = scan_file_with_detect_secrets(file_path)
+                    for secret_type, secrets in file_results.items():
+                        if secret_type not in results:
+                            results[secret_type] = set()
+                        results[secret_type].update(secrets)
+
+                    # Also run supplemental patterns
+                    supp_results = scan_file_with_patterns(
+                        file_path, SUPPLEMENTAL_PATTERNS
+                    )
+                    for secret_type, secrets in supp_results.items():
+                        if secret_type not in results:
+                            results[secret_type] = set()
+                        results[secret_type].update(secrets)
+                else:
+                    # Fallback to regex-only scanning
+                    file_results = scan_file_with_patterns(file_path, FALLBACK_PATTERNS)
+                    for secret_type, secrets in file_results.items():
+                        if secret_type not in results:
+                            results[secret_type] = set()
+                        results[secret_type].update(secrets)
+
+                # Check for private keys (always use our pattern)
                 try:
                     content = file_path.read_text(errors="ignore")
-
-                    # Check each secret pattern
-                    for pattern_name, pattern in compiled_patterns.items():
-                        matches = pattern.findall(content)
-                        for match in matches:
-                            # Filter out "Redacted" for bearer tokens
-                            if "Bearer" in pattern_name and "Redacted" in match:
-                                continue
-                            # Filter out known false positives
-                            if is_false_positive(match):
-                                continue
-                            results[pattern_name].add(match)
-
-                    # Check for private keys
                     if PRIVATE_KEY_PATTERN.search(content):
                         results["Private Key Files"].add(str(file_path))
-
                 except (OSError, IOError):
-                    continue
+                    pass
+
         except OSError:
             continue
 
@@ -368,6 +465,14 @@ def find_secrets_in_directories(
 def scan_secrets() -> None:
     """Scan log directories for potential secrets and print results."""
     print("Scanning for potential secrets in Claude Code logs...")
+    print("")
+
+    # Show scanner mode
+    if DETECT_SECRETS_AVAILABLE:
+        print("Using: detect-secrets library (enhanced scanning)")
+    else:
+        print("Using: built-in patterns (install detect-secrets for enhanced scanning)")
+        print("       pip install detect-secrets")
     print("")
 
     # Find existing directories
@@ -383,31 +488,51 @@ def scan_secrets() -> None:
     # Get results
     results = find_secrets_in_directories(scan_dirs)
 
-    # Print results for each pattern type
-    for pattern_name in SECRET_PATTERNS:
-        print(f"=== {pattern_name} ===")
-        found = results[pattern_name]
+    # Count total secrets found
+    total_secrets = 0
+
+    # Print results for each secret type found
+    for secret_type in sorted(results.keys()):
+        if secret_type == "Private Key Files":
+            continue  # Handle separately
+
+        found = results[secret_type]
         if found:
+            print(f"=== {secret_type} ===")
             for secret in sorted(found)[:10]:  # Limit to 10
-                print(secret)
-        else:
-            print("None found")
-        print("")
+                # Mask middle of secret for safety
+                if len(secret) > 20:
+                    masked = secret[:10] + "..." + secret[-6:]
+                else:
+                    masked = secret
+                print(f"  {masked}")
+            if len(found) > 10:
+                print(f"  ... and {len(found) - 10} more")
+            print("")
+            total_secrets += len(found)
 
     # Print private key files
-    print("=== Private Keys ===")
-    key_files = results["Private Key Files"]
+    key_files = results.get("Private Key Files", set())
     if key_files:
+        print("=== Private Key Files ===")
         for f in sorted(key_files)[:5]:  # Limit to 5
-            print(f)
-    else:
-        print("None found")
+            print(f"  {f}")
+        if len(key_files) > 5:
+            print(f"  ... and {len(key_files) - 5} more")
+        print("")
+        total_secrets += len(key_files)
 
-    print("")
+    # Summary
     print("=== Summary ===")
-    print("If secrets were found above, consider:")
-    print("  1. Rotate the exposed credentials immediately")
-    print("  2. Run /log-cleaner:clean to remove old logs")
+    if total_secrets == 0:
+        print("No secrets detected.")
+    else:
+        print(f"Found {total_secrets} potential secret(s).")
+        print("")
+        print("Recommended actions:")
+        print("  1. Rotate any exposed credentials immediately")
+        print("  2. Run /log-cleaner:clean to remove old logs")
+        print("  3. Review what data you paste into Claude Code")
 
 
 def main() -> None:
