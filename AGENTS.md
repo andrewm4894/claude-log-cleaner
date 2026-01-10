@@ -24,14 +24,31 @@ plugins/log-cleaner/
 ## Local Development
 
 ```bash
+# Install dependencies
+uv sync
+
+# Load plugin in Claude Code
 claude --plugin-dir /path/to/claude-log-cleaner/plugins/log-cleaner
 ```
 
-Test commands:
+Test slash commands:
 - `/log-cleaner:status` - Verify status output
 - `/log-cleaner:clean --dry-run` - Test cleanup without deletion
 - `/log-cleaner:set-retention 24` - Test config modification
 - `/log-cleaner:scan-secrets` - Test secret scanning
+
+## Running Tests
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run with verbose output
+uv run pytest -v
+
+# Run with coverage
+uv run pytest --cov=plugins/log-cleaner/scripts --cov-report=term-missing
+```
 
 ## Coding Style
 

@@ -1,0 +1,34 @@
+[project]
+name = "claude-log-cleaner"
+version = "2.0.0"
+description = "Claude Code plugin that automatically deletes session logs to prevent sensitive data exposure"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+authors = [{ name = "andrewm4894" }]
+keywords = ["claude", "security", "cleanup", "logs", "privacy"]
+
+[project.urls]
+Homepage = "https://github.com/andrewm4894/claude-log-cleaner"
+Repository = "https://github.com/andrewm4894/claude-log-cleaner"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["plugins/log-cleaner/scripts"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.coverage.run]
+source = ["plugins/log-cleaner/scripts"]
+omit = ["tests/*"]
