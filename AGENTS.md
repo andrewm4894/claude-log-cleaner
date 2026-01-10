@@ -1,36 +1,72 @@
-# Repository Guidelines
+# Claude Log Cleaner - Repository Guidelines
 
-## Project Structure & Module Organization
-This repository is a Claude Code plugin. Key paths:
-- `plugins/log-cleaner/scripts/cleanup.sh` holds the main cleanup logic.
-- `plugins/log-cleaner/commands/` contains slash command definitions (`*.md`).
-- `plugins/log-cleaner/hooks/hooks.json` registers the SessionEnd hook.
-- `plugins/log-cleaner/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` store plugin metadata.
+A Claude Code plugin that automatically deletes session log files from `~/.claude/` to prevent sensitive data exposure (API keys, tokens, credentials).
 
-## Build, Test, and Development Commands
-There is no build step. For local testing, load the plugin in Claude Code:
+## Project Structure
+
+```
+.claude-plugin/marketplace.json    # Marketplace config for plugin distribution
+plugins/log-cleaner/
+├── .claude-plugin/plugin.json     # Plugin metadata (name, version, description)
+├── commands/                      # Slash command definitions (markdown files)
+├── hooks/hooks.json               # SessionEnd hook configuration
+└── scripts/cleanup.py             # Main Python script (all cleanup logic)
+```
+
+## Architecture
+
+- **All cleanup logic is in `cleanup.py`** - Python 3.8+, stdlib only. Handles cleanup, status, retention config, and secret scanning.
+- **Commands are markdown files** - Each `.md` in `commands/` defines a slash command that delegates to `cleanup.py`
+- **Hook runs on session end** - `hooks.json` triggers `cleanup.py clean` when Claude Code session ends
+- **Config stored in `~/.claude/log-cleaner-config.json`** - Created on first run with defaults
+- **Directories cleaned**: `debug`, `file-history`, `projects`, `todos`, `plans`, `shell-snapshots`
+
+## Local Development
+
 ```bash
+# Install dependencies
+uv sync
+
+# Load plugin in Claude Code
 claude --plugin-dir /path/to/claude-log-cleaner/plugins/log-cleaner
 ```
-Then exercise commands:
+
+Test slash commands:
+- `/log-cleaner:status` - Verify status output
+- `/log-cleaner:clean --dry-run` - Test cleanup without deletion
+- `/log-cleaner:set-retention 24` - Test config modification
+- `/log-cleaner:scan-secrets` - Test secret scanning
+
+## Running Tests
+
 ```bash
-/log-cleaner:status
-/log-cleaner:clean --dry-run
-/log-cleaner:set-retention 24
-/log-cleaner:scan-secrets
+# Run all tests
+uv run pytest
+
+# Run with verbose output
+uv run pytest -v
+
+# Run with coverage
+uv run pytest --cov=plugins/log-cleaner/scripts --cov-report=term-missing
 ```
 
-## Coding Style & Naming Conventions
-- Shell: `cleanup.sh` is Bash; keep scripts readable and small, prefer explicit flags.
-- Commands: markdown files in `plugins/log-cleaner/commands/` are kebab-case and map to `/log-cleaner:<command>`.
-- Config: use `~/.claude/log-cleaner-config.json` keys like `retention_hours`.
+## Coding Style
 
-## Testing Guidelines
-No automated test suite is defined. Use the slash commands above to validate behavior, and prefer `--dry-run` when verifying deletion logic.
+- **Python**: Use type hints, keep functions focused, stdlib only
+- **Commands**: Markdown files in `commands/` are kebab-case, map to `/log-cleaner:<command>`
+- **Config**: Keys use snake_case (e.g., `retention_hours`)
 
-## Commit & Pull Request Guidelines
-- Commits use short, imperative messages (e.g., “Add…”, “Update…”, “Bump…”).
-- PRs should include a clear description, steps to test, and any behavior changes. Add screenshots only if the command output format changes.
+## Version Bumping
 
-## Security & Configuration Notes
-Logs can contain secrets; validate that cleanup does not delete unintended paths and document config changes in `README.md` when adding options.
+When releasing, update version in both:
+1. `plugins/log-cleaner/.claude-plugin/plugin.json`
+2. `.claude-plugin/marketplace.json`
+
+## Commits & PRs
+
+- Commits: short, imperative messages (e.g., "Add…", "Fix…", "Update…")
+- PRs: clear description, steps to test, note behavior changes
+
+## Security Notes
+
+Logs can contain secrets. Validate that cleanup does not delete unintended paths. Document config changes in `README.md`.

@@ -12,7 +12,7 @@ Arguments: $ARGUMENTS (number of hours)
 If the user provided a number, run:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.sh set-retention $ARGUMENTS
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.py" set-retention $ARGUMENTS
 ```
 
 If no argument was provided, ask the user how many hours they want to retain logs for. Common options:

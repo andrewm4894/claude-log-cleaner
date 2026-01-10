@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.sh clean --session-end"
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.py clean --session-end"
           }
         ]
       }

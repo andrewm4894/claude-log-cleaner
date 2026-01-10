@@ -1,7 +1,7 @@
 {
   "name": "log-cleaner",
   "description": "Automatically delete Claude Code session logs after a configurable retention period to prevent sensitive data exposure",
-  "version": "1.0.4",
+  "version": "2.0.0",
   "author": {
     "name": "andrewm4894"
   },
