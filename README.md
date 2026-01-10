@@ -79,7 +79,7 @@ claude --plugin-dir /path/to/claude-log-cleaner/plugins/log-cleaner
 | `/log-cleaner:clean` | Manually run cleanup |
 | `/log-cleaner:status` | Show directory sizes and config |
 | `/log-cleaner:set-retention <hours>` | Set retention period |
-| `/log-cleaner:scan-secrets` | Scan logs for exposed secrets |
+| `/log-cleaner:scan` | Scan logs for exposed secrets |
 
 ### Examples
 
@@ -97,7 +97,7 @@ claude --plugin-dir /path/to/claude-log-cleaner/plugins/log-cleaner
 /log-cleaner:clean --hours 1
 
 # Scan for secrets in your logs
-/log-cleaner:scan-secrets
+/log-cleaner:scan
 ```
 
 ## Configuration

@@ -382,7 +382,7 @@ Examples:
     %(prog)s clean --hours 1    # Clean files older than 1 hour
     %(prog)s set-retention 48   # Set retention to 48 hours
     %(prog)s status             # Show current status
-    %(prog)s scan-secrets       # Scan for exposed secrets
+    %(prog)s scan                # Scan for exposed secrets
 
 Configuration:
     Edit ~/.claude/log-cleaner-config.json to customize behavior.
@@ -413,7 +413,7 @@ Configuration:
     retention_parser.add_argument("hours", type=int, help="Number of hours to retain logs")
 
     # Scan secrets command
-    subparsers.add_parser("scan-secrets", help="Scan for potential secrets in logs")
+    subparsers.add_parser("scan", help="Scan for potential secrets in logs")
 
     args = parser.parse_args()
 
@@ -446,7 +446,7 @@ Configuration:
         show_status()
     elif args.command == "set-retention":
         set_retention(args.hours)
-    elif args.command == "scan-secrets":
+    elif args.command == "scan":
         scan_secrets()
 
 

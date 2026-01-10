@@ -35,7 +35,7 @@ Test slash commands:
 - `/log-cleaner:status` - Verify status output
 - `/log-cleaner:clean --dry-run` - Test cleanup without deletion
 - `/log-cleaner:set-retention 24` - Test config modification
-- `/log-cleaner:scan-secrets` - Test secret scanning
+- `/log-cleaner:scan` - Test secret scanning
 
 ## Running Tests
 
@@ -58,9 +58,10 @@ uv run pytest --cov=plugins/log-cleaner/scripts --cov-report=term-missing
 
 ## Version Bumping
 
-When releasing, update version in both:
+When releasing, update version in all three:
 1. `plugins/log-cleaner/.claude-plugin/plugin.json`
 2. `.claude-plugin/marketplace.json`
+3. `pyproject.toml`
 
 ## Commits & PRs
 
