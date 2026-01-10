@@ -30,7 +30,7 @@ FAKE_SECRETS = {
     "anthropic_key": "sk-ant-api03-" + "FAKEKEY" * 4,  # Matches pattern
     "github_pat": "ghp_" + "x" * 36,  # 36 chars after prefix
     "github_oauth": "gho_" + "y" * 36,
-    "aws_access_key": "AKIATESTFAKEKEY12345",  # 20 chars, starts with AKIA
+    "aws_access_key": "AKIAZ9Y8X7W6V5U4T3S2",  # 20 chars, starts with AKIA
     "posthog_key": "phc_" + "z" * 30,  # 30 chars after prefix
     "slack_bot_token": "xoxb-" + "1" * 10 + "-" + "2" * 13 + "-" + "a" * 24,  # Matches pattern
     "bearer_token": "Bearer " + "TESTTOKEN" * 4,  # 36 chars after Bearer
@@ -426,3 +426,72 @@ password={FAKE_SECRETS["github_pat"]}
         results = cleanup.find_secrets_in_directories([test_dir])
 
         assert FAKE_SECRETS["github_pat"] in results["GitHub Tokens"]
+
+
+class TestFalsePositiveFiltering:
+    """Test that known false positives are filtered out."""
+
+    def test_aws_example_key_filtered(self, tmp_path):
+        """AWS documented example key should be filtered out."""
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+        (test_dir / "example.txt").write_text("AWS_KEY=AKIAIOSFODNN7EXAMPLE")
+
+        results = cleanup.find_secrets_in_directories([test_dir])
+
+        assert len(results["AWS Keys"]) == 0
+
+    def test_css_class_names_filtered(self, tmp_path):
+        """CSS class names like sk-*-component should be filtered."""
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+        content = """
+        class="sk-execution-component-dark"
+        class="sk-button-container-light"
+        class="sk-icon-wrapper-primary"
+        """
+        (test_dir / "styles.txt").write_text(content)
+
+        results = cleanup.find_secrets_in_directories([test_dir])
+
+        assert len(results["OpenAI/Anthropic API Keys"]) == 0
+
+    def test_placeholder_patterns_filtered(self, tmp_path):
+        """Placeholder patterns like sk-xxxx should be filtered."""
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+        content = """
+        sk-xxxxxxxxxxxxxxxxxxxx
+        sk-1234567890abcdefghij
+        sk-test1234567890abcdef
+        """
+        (test_dir / "placeholders.txt").write_text(content)
+
+        results = cleanup.find_secrets_in_directories([test_dir])
+
+        assert len(results["OpenAI/Anthropic API Keys"]) == 0
+
+    def test_real_key_not_filtered(self, tmp_path):
+        """Real-looking keys should not be filtered."""
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+        (test_dir / "real.txt").write_text(FAKE_SECRETS["openai_key"])
+
+        results = cleanup.find_secrets_in_directories([test_dir])
+
+        assert FAKE_SECRETS["openai_key"] in results["OpenAI/Anthropic API Keys"]
+
+    def test_is_false_positive_function(self):
+        """Test the is_false_positive function directly."""
+        # Should be filtered
+        assert cleanup.is_false_positive("AKIAIOSFODNN7EXAMPLE") is True
+        assert cleanup.is_false_positive("sk-1234567890abcdefghij") is True
+        assert cleanup.is_false_positive("sk-xxxxxxxxxxxxxxxxxxxx") is True
+        assert cleanup.is_false_positive("sk-test-component-dark") is True
+        assert cleanup.is_false_positive("sk-execution-container-light") is True
+        assert cleanup.is_false_positive("sk-testkey1234567890abc") is True
+
+        # Should not be filtered (real-looking keys)
+        assert cleanup.is_false_positive(FAKE_SECRETS["openai_key"]) is False
+        assert cleanup.is_false_positive(FAKE_SECRETS["anthropic_key"]) is False
+        assert cleanup.is_false_positive(FAKE_SECRETS["aws_access_key"]) is False

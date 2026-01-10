@@ -271,6 +271,42 @@ SECRET_PATTERNS = {
 
 PRIVATE_KEY_PATTERN = re.compile(r"-----BEGIN .* PRIVATE KEY-----")
 
+# Known false positives to exclude
+FALSE_POSITIVE_EXACT = {
+    # AWS documented example keys
+    "AKIAIOSFODNN7EXAMPLE",
+    "AKIATESTFAKEKEY12345",
+    # Common test/placeholder patterns
+    "sk-1234567890abcdefghij",
+    "sk-test1234567890abcdef",
+    "sk-xxxxxxxxxxxxxxxxxxxx",
+}
+
+# Patterns that indicate false positives (CSS classes, test values, etc.)
+FALSE_POSITIVE_PATTERNS = [
+    # CSS class names (sk-*-component, sk-execution-*, etc.)
+    re.compile(r"sk-[a-z]+-(?:component|container|wrapper|button|icon|text|dark|light|primary|secondary)"),
+    # Repeating placeholder characters
+    re.compile(r"sk-[x]{10,}"),
+    re.compile(r"sk-[0-9]{20,}$"),  # All numeric after prefix
+    # Test file markers
+    re.compile(r"sk-(?:test|fake|mock|example|dummy|sample)[a-zA-Z0-9_-]*"),
+]
+
+
+def is_false_positive(secret: str) -> bool:
+    """Check if a detected secret is a known false positive."""
+    # Check exact matches
+    if secret in FALSE_POSITIVE_EXACT:
+        return True
+
+    # Check pattern matches
+    for pattern in FALSE_POSITIVE_PATTERNS:
+        if pattern.search(secret):
+            return True
+
+    return False
+
 
 def find_secrets_in_directories(
     directories: List[Path],
@@ -311,6 +347,9 @@ def find_secrets_in_directories(
                         for match in matches:
                             # Filter out "Redacted" for bearer tokens
                             if "Bearer" in pattern_name and "Redacted" in match:
+                                continue
+                            # Filter out known false positives
+                            if is_false_positive(match):
                                 continue
                             results[pattern_name].add(match)
 
