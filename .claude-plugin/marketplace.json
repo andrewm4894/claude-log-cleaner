@@ -1,12 +1,25 @@
 {
+  "$schema": "https://code.claude.com/schemas/marketplace.json",
   "name": "log-cleaner-marketplace",
   "description": "Claude Code log cleaner plugin marketplace",
+  "owner": {
+    "name": "andrewm4894"
+  },
   "plugins": [
     {
       "name": "log-cleaner",
       "description": "Auto-delete Claude Code session logs after configurable retention period to prevent sensitive data exposure",
-      "source": "..",
-      "version": "1.0.0"
+      "version": "1.0.0",
+      "author": {
+        "name": "andrewm4894"
+      },
+      "source": {
+        "source": "url",
+        "url": "https://github.com/andrewm4894/claude-log-cleaner"
+      },
+      "category": "security",
+      "homepage": "https://github.com/andrewm4894/claude-log-cleaner",
+      "tags": ["security", "cleanup", "privacy"]
     }
   ]
 }
