@@ -22,19 +22,25 @@ import cleanup
 # =============================================================================
 
 
-def secret_found_in_results(secret: str, results: Dict[str, Set[str]]) -> bool:
-    """Check if a secret is found anywhere in the results dict."""
-    for key, values in results.items():
-        if secret in values:
+def secret_found_in_results(secret: str, results: Dict[str, Dict[str, Set[str]]]) -> bool:
+    """Check if a secret is found anywhere in the results dict.
+
+    The results dict maps secret_type -> secret_value -> set of file paths.
+    """
+    for secret_type, secrets_dict in results.items():
+        if secret in secrets_dict:
             return True
     return False
 
 
-def any_secrets_found(results: Dict[str, Set[str]]) -> int:
-    """Count total secrets found across all result keys."""
+def any_secrets_found(results: Dict[str, Dict[str, Set[str]]]) -> int:
+    """Count total secrets found across all result keys.
+
+    The results dict maps secret_type -> secret_value -> set of file paths.
+    """
     total = 0
-    for key, values in results.items():
-        total += len(values)
+    for secret_type, secrets_dict in results.items():
+        total += len(secrets_dict)
     return total
 
 
@@ -607,7 +613,7 @@ class TestTruffleHogIntegration:
         results = cleanup.scan_with_trufflehog([tmp_path])
 
         # Should return empty results on timeout
-        assert results == {"Private Key Files": set()}
+        assert results == {"Private Key Files": {}}
 
     def test_scan_with_trufflehog_handles_not_found(self, tmp_path, monkeypatch):
         """Test handling when TruffleHog binary not found."""
@@ -620,7 +626,7 @@ class TestTruffleHogIntegration:
         results = cleanup.scan_with_trufflehog([tmp_path])
 
         # Should return empty results
-        assert results == {"Private Key Files": set()}
+        assert results == {"Private Key Files": {}}
 
     def test_scan_with_trufflehog_filters_false_positives(self, tmp_path, monkeypatch):
         """Test that TruffleHog results are filtered for false positives."""
@@ -658,7 +664,7 @@ class TestTruffleHogIntegration:
 
         def mock_trufflehog(dirs, verify=False):
             scanners_called.append("trufflehog")
-            return {"Private Key Files": set()}
+            return {"Private Key Files": {}}
 
         def mock_detect_secrets(path):
             scanners_called.append("detect_secrets")

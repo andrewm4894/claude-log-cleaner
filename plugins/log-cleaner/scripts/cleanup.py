@@ -343,9 +343,13 @@ def is_false_positive(secret: str) -> bool:
     return False
 
 
-def scan_file_with_detect_secrets(file_path: Path) -> Dict[str, Set[str]]:
-    """Scan a single file using detect-secrets library."""
-    results: Dict[str, Set[str]] = {}
+def scan_file_with_detect_secrets(file_path: Path) -> Dict[str, Dict[str, Set[str]]]:
+    """Scan a single file using detect-secrets library.
+
+    Returns:
+        Dict mapping secret_type -> secret_value -> set of file paths
+    """
+    results: Dict[str, Dict[str, Set[str]]] = {}
 
     try:
         with transient_settings({"plugins_used": DETECT_SECRETS_PLUGINS}):
@@ -354,10 +358,12 @@ def scan_file_with_detect_secrets(file_path: Path) -> Dict[str, Set[str]]:
                 secret_value = secret.secret_value
 
                 if secret_type not in results:
-                    results[secret_type] = set()
+                    results[secret_type] = {}
 
                 if not is_false_positive(secret_value):
-                    results[secret_type].add(secret_value)
+                    if secret_value not in results[secret_type]:
+                        results[secret_type][secret_value] = set()
+                    results[secret_type][secret_value].add(str(file_path))
     except Exception:
         # If detect-secrets fails on a file, skip it
         pass
@@ -367,9 +373,13 @@ def scan_file_with_detect_secrets(file_path: Path) -> Dict[str, Set[str]]:
 
 def scan_file_with_patterns(
     file_path: Path, patterns: Dict[str, str]
-) -> Dict[str, Set[str]]:
-    """Scan a single file using regex patterns (fallback method)."""
-    results: Dict[str, Set[str]] = {name: set() for name in patterns}
+) -> Dict[str, Dict[str, Set[str]]]:
+    """Scan a single file using regex patterns (fallback method).
+
+    Returns:
+        Dict mapping secret_type -> secret_value -> set of file paths
+    """
+    results: Dict[str, Dict[str, Set[str]]] = {name: {} for name in patterns}
 
     try:
         content = file_path.read_text(errors="ignore")
@@ -382,14 +392,18 @@ def scan_file_with_patterns(
                 if "Bearer" in pattern_name and "Redacted" in match:
                     continue
                 if not is_false_positive(match):
-                    results[pattern_name].add(match)
+                    if match not in results[pattern_name]:
+                        results[pattern_name][match] = set()
+                    results[pattern_name][match].add(str(file_path))
     except (OSError, IOError):
         pass
 
     return results
 
 
-def scan_with_trufflehog(directories: List[Path], verify: bool = False) -> Dict[str, Set[str]]:
+def scan_with_trufflehog(
+    directories: List[Path], verify: bool = False
+) -> Dict[str, Dict[str, Set[str]]]:
     """
     Scan directories using TruffleHog CLI.
 
@@ -398,10 +412,10 @@ def scan_with_trufflehog(directories: List[Path], verify: bool = False) -> Dict[
         verify: Whether to verify credentials against APIs (slower but more accurate)
 
     Returns:
-        Dict mapping detector types to sets of found secrets
+        Dict mapping detector types -> secret values -> sets of file paths
     """
-    results: Dict[str, Set[str]] = {}
-    results["Private Key Files"] = set()
+    results: Dict[str, Dict[str, Set[str]]] = {}
+    results["Private Key Files"] = {}
 
     # Build command
     cmd = ["trufflehog", "filesystem", "--json", "--no-update"]
@@ -420,20 +434,28 @@ def scan_with_trufflehog(directories: List[Path], verify: bool = False) -> Dict[
                 detector = finding.get("DetectorName", finding.get("DetectorType", "Unknown"))
                 raw = finding.get("Raw", "")
 
+                # Extract file path from TruffleHog metadata
+                file_path = (
+                    finding.get("SourceMetadata", {})
+                    .get("Data", {})
+                    .get("Filesystem", {})
+                    .get("file", "")
+                )
+
                 # Handle private keys specially
                 if detector == "PrivateKey" or "private" in str(detector).lower():
-                    file_path = (
-                        finding.get("SourceMetadata", {})
-                        .get("Data", {})
-                        .get("Filesystem", {})
-                        .get("file", "")
-                    )
                     if file_path:
-                        results["Private Key Files"].add(file_path)
+                        # Use file path as both key and value for private keys
+                        if file_path not in results["Private Key Files"]:
+                            results["Private Key Files"][file_path] = set()
+                        results["Private Key Files"][file_path].add(file_path)
                 elif raw and not is_false_positive(raw):
                     if detector not in results:
-                        results[detector] = set()
-                    results[detector].add(raw)
+                        results[detector] = {}
+                    if raw not in results[detector]:
+                        results[detector][raw] = set()
+                    if file_path:
+                        results[detector][raw].add(file_path)
             except json.JSONDecodeError:
                 continue
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
@@ -442,15 +464,20 @@ def scan_with_trufflehog(directories: List[Path], verify: bool = False) -> Dict[
     return results
 
 
-def _merge_results(target: Dict[str, Set[str]], source: Dict[str, Set[str]]) -> None:
-    """Merge source results into target, combining sets for matching keys."""
-    for secret_type, secrets in source.items():
+def _merge_results(
+    target: Dict[str, Dict[str, Set[str]]], source: Dict[str, Dict[str, Set[str]]]
+) -> None:
+    """Merge source results into target, combining file path sets for matching secrets."""
+    for secret_type, secrets_dict in source.items():
         if secret_type not in target:
-            target[secret_type] = set()
-        target[secret_type].update(secrets)
+            target[secret_type] = {}
+        for secret_value, file_paths in secrets_dict.items():
+            if secret_value not in target[secret_type]:
+                target[secret_type][secret_value] = set()
+            target[secret_type][secret_value].update(file_paths)
 
 
-def find_secrets_in_directories(directories: List[Path]) -> Dict[str, Set[str]]:
+def find_secrets_in_directories(directories: List[Path]) -> Dict[str, Dict[str, Set[str]]]:
     """
     Scan directories for secrets using all available scanners.
 
@@ -463,11 +490,11 @@ def find_secrets_in_directories(directories: List[Path]) -> Dict[str, Set[str]]:
         directories: List of directory paths to scan
 
     Returns:
-        Dict mapping secret types to sets of found secrets.
-        Special key "Private Key Files" contains file paths with private keys.
+        Dict mapping secret types -> secret values -> sets of file paths.
+        Special key "Private Key Files" maps file paths to themselves.
     """
-    results: Dict[str, Set[str]] = {}
-    results["Private Key Files"] = set()
+    results: Dict[str, Dict[str, Set[str]]] = {}
+    results["Private Key Files"] = {}
 
     # 1. Run TruffleHog if available (scans whole directories at once)
     if TRUFFLEHOG_AVAILABLE:
@@ -497,7 +524,10 @@ def find_secrets_in_directories(directories: List[Path]) -> Dict[str, Set[str]]:
                 try:
                     content = file_path.read_text(errors="ignore")
                     if PRIVATE_KEY_PATTERN.search(content):
-                        results["Private Key Files"].add(str(file_path))
+                        fp_str = str(file_path)
+                        if fp_str not in results["Private Key Files"]:
+                            results["Private Key Files"][fp_str] = set()
+                        results["Private Key Files"][fp_str].add(fp_str)
                 except (OSError, IOError):
                     pass
 
@@ -505,6 +535,33 @@ def find_secrets_in_directories(directories: List[Path]) -> Dict[str, Set[str]]:
             continue
 
     return results
+
+
+def _extract_context_from_path(file_path: str) -> str:
+    """Extract the path relative to ~/.claude for display."""
+    path = Path(file_path)
+    parts = path.parts
+
+    # Find the .claude directory index
+    try:
+        claude_idx = parts.index(".claude")
+    except ValueError:
+        return file_path
+
+    # Return path relative to .claude
+    rel_parts = parts[claude_idx + 1 :]
+    if not rel_parts:
+        return file_path
+
+    return str(Path(*rel_parts))
+
+
+def _get_unique_locations(file_paths: Set[str]) -> List[str]:
+    """Get unique location contexts from file paths, sorted and deduplicated."""
+    contexts = set()
+    for fp in file_paths:
+        contexts.add(_extract_context_from_path(fp))
+    return sorted(contexts)
 
 
 def scan_secrets() -> None:
@@ -546,31 +603,40 @@ def scan_secrets() -> None:
         if secret_type == "Private Key Files":
             continue  # Handle separately
 
-        found = results[secret_type]
-        if found:
+        secrets_dict = results[secret_type]
+        if secrets_dict:
             print(f"=== {secret_type} ===")
-            for secret in sorted(found)[:10]:  # Limit to 10
+            for i, (secret, file_paths) in enumerate(sorted(secrets_dict.items())[:10]):
                 # Mask middle of secret for safety
                 if len(secret) > 20:
                     masked = secret[:10] + "..." + secret[-6:]
                 else:
                     masked = secret
                 print(f"  {masked}")
-            if len(found) > 10:
-                print(f"  ... and {len(found) - 10} more")
+
+                # Show file locations (limit to 3 per secret)
+                locations = _get_unique_locations(file_paths)
+                for loc in locations[:3]:
+                    print(f"    └─ {loc}")
+                if len(locations) > 3:
+                    print(f"    └─ ... and {len(locations) - 3} more locations")
+
+            if len(secrets_dict) > 10:
+                print(f"  ... and {len(secrets_dict) - 10} more")
             print("")
-            total_secrets += len(found)
+            total_secrets += len(secrets_dict)
 
     # Print private key files
-    key_files = results.get("Private Key Files", set())
-    if key_files:
+    key_files_dict = results.get("Private Key Files", {})
+    if key_files_dict:
         print("=== Private Key Files ===")
-        for f in sorted(key_files)[:5]:  # Limit to 5
-            print(f"  {f}")
-        if len(key_files) > 5:
-            print(f"  ... and {len(key_files) - 5} more")
+        for i, file_path in enumerate(sorted(key_files_dict.keys())[:5]):
+            context = _extract_context_from_path(file_path)
+            print(f"  {context}")
+        if len(key_files_dict) > 5:
+            print(f"  ... and {len(key_files_dict) - 5} more")
         print("")
-        total_secrets += len(key_files)
+        total_secrets += len(key_files_dict)
 
     # Summary
     print("=== Summary ===")
