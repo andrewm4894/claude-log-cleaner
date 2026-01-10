@@ -16,21 +16,32 @@ This plugin helps you maintain security hygiene by automatically cleaning up old
 
 ## Installation
 
-### From GitHub
+### Step 1: Add the marketplace
 
-```bash
-# In Claude Code, run:
-/plugin install https://github.com/andrewm4894/claude-log-cleaner
+```
+/plugin marketplace add andrewm4894/claude-log-cleaner
 ```
 
-### Local Installation
+### Step 2: Install the plugin
+
+```
+/plugin install log-cleaner@log-cleaner-marketplace
+```
+
+### Updating
+
+```
+/plugin update log-cleaner@log-cleaner-marketplace
+```
+
+### Local Development
 
 ```bash
 # Clone the repository
 git clone https://github.com/andrewm4894/claude-log-cleaner.git
 
 # In Claude Code, load the plugin for testing:
-claude --plugin-dir /path/to/claude-log-cleaner
+claude --plugin-dir /path/to/claude-log-cleaner/plugins/log-cleaner
 ```
 
 ## Commands
