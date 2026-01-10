@@ -63,12 +63,17 @@ uv run pytest --cov=plugins/log-cleaner/scripts --cov-report=term-missing
 - **Commands**: Markdown files in `commands/` are kebab-case, map to `/log-cleaner:<command>`
 - **Config**: Keys use snake_case (e.g., `retention_hours`)
 
-## Version Bumping
+## Version Bumping & Releases
 
 When releasing, update version in all three:
 1. `plugins/log-cleaner/.claude-plugin/plugin.json`
 2. `.claude-plugin/marketplace.json`
 3. `pyproject.toml`
+
+After committing version bump, create a GitHub release:
+```bash
+gh release create vX.Y.Z --title "vX.Y.Z" --notes "Release notes here"
+```
 
 ## Commits & PRs
 
