@@ -12,7 +12,7 @@ Arguments: $ARGUMENTS
 Run the cleanup script located at the plugin root:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.sh $ARGUMENTS
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.py" clean $ARGUMENTS
 ```
 
 Available options:

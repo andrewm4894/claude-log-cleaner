@@ -10,7 +10,7 @@ Show the current status of Claude Code session logs, including directory sizes a
 Run the status command:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.sh status
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.py" status
 ```
 
 After showing the status, offer to help the user:
