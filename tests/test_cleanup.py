@@ -158,12 +158,12 @@ class TestCleanDirectory:
 
 
 class TestSecretPatterns:
-    """Tests for secret detection patterns (fallback patterns)."""
+    """Tests for built-in secret detection patterns."""
 
     def test_openai_key_pattern(self):
         """Should match OpenAI API keys."""
         import re
-        pattern = re.compile(cleanup.FALLBACK_PATTERNS["OpenAI/Anthropic API Keys"])
+        pattern = re.compile(cleanup.BUILTIN_PATTERNS["OpenAI/Anthropic API Keys"])
 
         assert pattern.search("sk-1234567890abcdefghij")
         assert pattern.search("sk-proj-" + "a" * 50)
@@ -173,7 +173,7 @@ class TestSecretPatterns:
     def test_github_token_pattern(self):
         """Should match GitHub tokens."""
         import re
-        pattern = re.compile(cleanup.FALLBACK_PATTERNS["GitHub Tokens"])
+        pattern = re.compile(cleanup.BUILTIN_PATTERNS["GitHub Tokens"])
 
         assert pattern.search("ghp_" + "a" * 36)
         assert pattern.search("gho_" + "a" * 36)
@@ -183,7 +183,7 @@ class TestSecretPatterns:
     def test_aws_key_pattern(self):
         """Should match AWS access keys."""
         import re
-        pattern = re.compile(cleanup.FALLBACK_PATTERNS["AWS Keys"])
+        pattern = re.compile(cleanup.BUILTIN_PATTERNS["AWS Keys"])
 
         assert pattern.search("AKIAIOSFODNN7EXAMPLE")
         assert not pattern.search("AKIA123")  # Too short
@@ -191,7 +191,7 @@ class TestSecretPatterns:
     def test_posthog_key_pattern(self):
         """Should match PostHog keys."""
         import re
-        pattern = re.compile(cleanup.FALLBACK_PATTERNS["PostHog Keys"])
+        pattern = re.compile(cleanup.BUILTIN_PATTERNS["PostHog Keys"])
 
         assert pattern.search("phc_" + "a" * 30)
         assert pattern.search("phx_" + "a" * 30)

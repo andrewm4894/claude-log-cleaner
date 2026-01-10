@@ -16,7 +16,7 @@ plugins/log-cleaner/
 ## Architecture
 
 - **All cleanup logic is in `cleanup.py`** - Python 3.8+, handles cleanup, status, retention config, and secret scanning
-- **Secret scanning** - Uses [detect-secrets](https://github.com/Yelp/detect-secrets) if installed (20+ secret types), falls back to built-in patterns
+- **Secret scanning** - Priority: [TruffleHog](https://github.com/trufflesecurity/trufflehog) (700+ detectors) > [detect-secrets](https://github.com/Yelp/detect-secrets) (20+ types) > built-in patterns
 - **Commands are markdown files** - Each `.md` in `commands/` defines a slash command that delegates to `cleanup.py`
 - **Hook runs on session end** - `hooks.json` triggers `cleanup.py clean` when Claude Code session ends
 - **Config stored in `~/.claude/log-cleaner-config.json`** - Created on first run with defaults
@@ -28,7 +28,10 @@ plugins/log-cleaner/
 # Install dependencies
 uv sync
 
-# Optional: Install detect-secrets for enhanced scanning
+# Optional: Install TruffleHog for enhanced scanning (700+ detectors)
+brew install trufflehog
+
+# Alternative: Install detect-secrets for enhanced scanning
 pip install detect-secrets
 
 # Load plugin in Claude Code

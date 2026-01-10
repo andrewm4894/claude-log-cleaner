@@ -10,7 +10,7 @@ Scan Claude Code session logs for potential secrets, API keys, and sensitive dat
 Run the scan command:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.py" scan
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.py" scan $@
 ```
 
 After showing results, recommend running cleanup if secrets are found.
