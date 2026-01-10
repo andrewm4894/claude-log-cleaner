@@ -1,0 +1,12 @@
+{
+  "name": "log-cleaner-marketplace",
+  "description": "Claude Code log cleaner plugin marketplace",
+  "plugins": [
+    {
+      "name": "log-cleaner",
+      "description": "Auto-delete Claude Code session logs after configurable retention period to prevent sensitive data exposure",
+      "source": ".",
+      "version": "1.0.0"
+    }
+  ]
+}
