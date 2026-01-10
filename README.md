@@ -14,6 +14,10 @@ Claude Code stores session logs in `~/.claude/` that can contain sensitive infor
 
 This plugin helps you maintain security hygiene by automatically cleaning up old logs.
 
+## Requirements
+
+- Python 3.8+ (uses stdlib only, no additional packages needed)
+
 ## Installation
 
 ### Step 1: Add the marketplace

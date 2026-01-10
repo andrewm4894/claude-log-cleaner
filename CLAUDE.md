@@ -14,7 +14,7 @@ plugins/log-cleaner/
 ├── .claude-plugin/plugin.json     # Plugin metadata (name, version, description)
 ├── commands/                      # Slash command definitions (markdown files)
 ├── hooks/hooks.json               # SessionEnd hook configuration
-└── scripts/cleanup.sh             # Main bash script (all cleanup logic)
+└── scripts/cleanup.py             # Main Python script (all cleanup logic)
 ```
 
 ## Local Development
@@ -34,11 +34,11 @@ After loading the plugin locally, test the slash commands:
 
 ## Architecture Notes
 
-- **All cleanup logic is in `cleanup.sh`** - A single bash script handles cleanup, status, retention configuration, and directory management
-- **Commands are markdown files** - Each `.md` file in `commands/` defines a slash command that delegates to `cleanup.sh`
-- **Hook runs on session end** - `hooks.json` triggers `cleanup.sh clean` when Claude Code session ends
+- **All cleanup logic is in `cleanup.py`** - A single Python script (3.8+, stdlib only) handles cleanup, status, retention configuration, and secret scanning
+- **Commands are markdown files** - Each `.md` file in `commands/` defines a slash command that delegates to `cleanup.py`
+- **Hook runs on session end** - `hooks.json` triggers `cleanup.py clean` when Claude Code session ends
 - **Config stored in `~/.claude/log-cleaner-config.json`** - Created on first run with defaults
-- **Two directory categories**: Default dirs (`debug`, `file-history`) always cleaned; optional dirs (`projects`, `todos`, `plans`, `shell-snapshots`) only with `--all` flag
+- **All directories cleaned by default**: `debug`, `file-history`, `projects`, `todos`, `plans`, `shell-snapshots`
 
 ## Version Bumping
 

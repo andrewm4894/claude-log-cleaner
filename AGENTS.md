@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 This repository is a Claude Code plugin. Key paths:
-- `plugins/log-cleaner/scripts/cleanup.sh` holds the main cleanup logic.
+- `plugins/log-cleaner/scripts/cleanup.py` holds the main cleanup logic (Python 3.8+, stdlib only).
 - `plugins/log-cleaner/commands/` contains slash command definitions (`*.md`).
 - `plugins/log-cleaner/hooks/hooks.json` registers the SessionEnd hook.
 - `plugins/log-cleaner/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` store plugin metadata.
@@ -21,7 +21,7 @@ Then exercise commands:
 ```
 
 ## Coding Style & Naming Conventions
-- Shell: `cleanup.sh` is Bash; keep scripts readable and small, prefer explicit flags.
+- Python: `cleanup.py` uses Python 3.8+ with stdlib only; use type hints, keep functions focused.
 - Commands: markdown files in `plugins/log-cleaner/commands/` are kebab-case and map to `/log-cleaner:<command>`.
 - Config: use `~/.claude/log-cleaner-config.json` keys like `retention_hours`.
 
