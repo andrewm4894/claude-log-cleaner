@@ -17,17 +17,23 @@ This plugin helps you maintain security hygiene by automatically cleaning up old
 ## Requirements
 
 - Python 3.8+
-- Optional: `detect-secrets` for enhanced secret scanning (20+ secret types)
+- Optional: `trufflehog` or `detect-secrets` for enhanced secret scanning
 
 ### Enhanced Scanning (Optional)
 
-For improved secret detection using [Yelp's detect-secrets](https://github.com/Yelp/detect-secrets):
+Install one or both for improved secret detection. All available scanners run together for maximum coverage.
 
+**TruffleHog** (recommended) - 700+ secret detectors:
+```bash
+brew install trufflehog
+```
+
+**detect-secrets** - 20+ secret types:
 ```bash
 pip install detect-secrets
 ```
 
-This enables detection of 20+ secret types including AWS, GitHub, Slack, Stripe, JWT, and more. Without it, the plugin uses built-in patterns for common secrets.
+Without these, the plugin uses built-in regex patterns for common secrets (OpenAI, Anthropic, GitHub, AWS, Slack, PostHog).
 
 ## Installation
 

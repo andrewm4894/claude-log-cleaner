@@ -8,6 +8,8 @@ import argparse
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -21,6 +23,9 @@ try:
     DETECT_SECRETS_AVAILABLE = True
 except ImportError:
     DETECT_SECRETS_AVAILABLE = False
+
+# Check for TruffleHog CLI (installed via brew or binary)
+TRUFFLEHOG_AVAILABLE = shutil.which("trufflehog") is not None
 
 # Configuration
 CLAUDE_DIR = Path.home() / ".claude"
@@ -288,26 +293,12 @@ DETECT_SECRETS_PLUGINS = [
     {"name": "TwilioKeyDetector"},
 ]
 
-# Additional patterns not covered by detect-secrets (or where detect-secrets has bugs)
-# These supplement detect-secrets or serve as fallback when it's not installed
-SUPPLEMENTAL_PATTERNS = {
-    # Anthropic keys (not in detect-secrets)
-    "Anthropic API Keys": r"(sk-ant-[a-zA-Z0-9_-]{20,})",
-    # PostHog keys (not in detect-secrets)
-    "PostHog Keys": r"(phc_[a-zA-Z0-9]{30,}|phx_[a-zA-Z0-9_-]{30,})",
-    # Broader OpenAI pattern (detect-secrets only catches specific format)
-    "OpenAI API Keys": r"(sk-proj-[a-zA-Z0-9_-]{40,})",
-    # Bearer tokens in logs
-    "Bearer Tokens": r"Bearer [a-zA-Z0-9_-]{30,}",
-    # GitHub tokens (detect-secrets has a regex bug that only captures prefix)
-    "GitHub Tokens": r"((?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36}|github_pat_[a-zA-Z0-9_]{22,})",
-}
-
-# Fallback patterns when detect-secrets is not available
-FALLBACK_PATTERNS = {
+# Built-in regex patterns - always run as baseline detection
+# These catch secrets that TruffleHog/detect-secrets might miss
+BUILTIN_PATTERNS = {
     "OpenAI/Anthropic API Keys": r"(sk-[a-zA-Z0-9_-]{20,}|sk-proj-[a-zA-Z0-9_-]{50,}|sk-ant-[a-zA-Z0-9_-]{20,})",
     "PostHog Keys": r"(phc_[a-zA-Z0-9]{30,}|phx_[a-zA-Z0-9_-]{30,})",
-    "GitHub Tokens": r"(ghp_[a-zA-Z0-9]{36}|gho_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9_]{22,})",
+    "GitHub Tokens": r"((?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36}|github_pat_[a-zA-Z0-9_]{22,})",
     "AWS Keys": r"(AKIA[0-9A-Z]{16}|ABIA[0-9A-Z]{16}|ACCA[0-9A-Z]{16})",
     "Slack Tokens": r"(xox[baprs]-[0-9a-zA-Z-]{10,})",
     "Bearer Tokens": r"Bearer [a-zA-Z0-9_-]{30,}",
@@ -398,12 +389,75 @@ def scan_file_with_patterns(
     return results
 
 
+def scan_with_trufflehog(directories: List[Path], verify: bool = False) -> Dict[str, Set[str]]:
+    """
+    Scan directories using TruffleHog CLI.
+
+    Args:
+        directories: List of directory paths to scan
+        verify: Whether to verify credentials against APIs (slower but more accurate)
+
+    Returns:
+        Dict mapping detector types to sets of found secrets
+    """
+    results: Dict[str, Set[str]] = {}
+    results["Private Key Files"] = set()
+
+    # Build command
+    cmd = ["trufflehog", "filesystem", "--json", "--no-update"]
+    if not verify:
+        cmd.append("--no-verification")
+    cmd.extend(str(d) for d in directories if d.exists())
+
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        for line in proc.stdout.strip().split("\n"):
+            if not line:
+                continue
+            try:
+                finding = json.loads(line)
+                # Use DetectorName for human-readable name, fall back to DetectorType
+                detector = finding.get("DetectorName", finding.get("DetectorType", "Unknown"))
+                raw = finding.get("Raw", "")
+
+                # Handle private keys specially
+                if detector == "PrivateKey" or "private" in str(detector).lower():
+                    file_path = (
+                        finding.get("SourceMetadata", {})
+                        .get("Data", {})
+                        .get("Filesystem", {})
+                        .get("file", "")
+                    )
+                    if file_path:
+                        results["Private Key Files"].add(file_path)
+                elif raw and not is_false_positive(raw):
+                    if detector not in results:
+                        results[detector] = set()
+                    results[detector].add(raw)
+            except json.JSONDecodeError:
+                continue
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        pass
+
+    return results
+
+
+def _merge_results(target: Dict[str, Set[str]], source: Dict[str, Set[str]]) -> None:
+    """Merge source results into target, combining sets for matching keys."""
+    for secret_type, secrets in source.items():
+        if secret_type not in target:
+            target[secret_type] = set()
+        target[secret_type].update(secrets)
+
+
 def find_secrets_in_directories(directories: List[Path]) -> Dict[str, Set[str]]:
     """
-    Scan directories for secrets and return findings.
+    Scan directories for secrets using all available scanners.
 
-    Uses detect-secrets library if available, with supplemental patterns.
-    Falls back to regex-only scanning if detect-secrets is not installed.
+    Runs all available scanners and merges results for maximum coverage:
+    - TruffleHog (if installed via brew)
+    - detect-secrets (if installed via pip)
+    - Built-in regex patterns (always)
 
     Args:
         directories: List of directory paths to scan
@@ -415,6 +469,12 @@ def find_secrets_in_directories(directories: List[Path]) -> Dict[str, Set[str]]:
     results: Dict[str, Set[str]] = {}
     results["Private Key Files"] = set()
 
+    # 1. Run TruffleHog if available (scans whole directories at once)
+    if TRUFFLEHOG_AVAILABLE:
+        trufflehog_results = scan_with_trufflehog(directories)
+        _merge_results(results, trufflehog_results)
+
+    # 2. Scan files with detect-secrets and/or built-in patterns
     for scan_dir in directories:
         if not scan_dir.exists():
             continue
@@ -424,31 +484,16 @@ def find_secrets_in_directories(directories: List[Path]) -> Dict[str, Set[str]]:
                 if not file_path.is_file():
                     continue
 
-                # Use detect-secrets if available
+                # Run detect-secrets if available
                 if DETECT_SECRETS_AVAILABLE:
-                    file_results = scan_file_with_detect_secrets(file_path)
-                    for secret_type, secrets in file_results.items():
-                        if secret_type not in results:
-                            results[secret_type] = set()
-                        results[secret_type].update(secrets)
+                    ds_results = scan_file_with_detect_secrets(file_path)
+                    _merge_results(results, ds_results)
 
-                    # Also run supplemental patterns
-                    supp_results = scan_file_with_patterns(
-                        file_path, SUPPLEMENTAL_PATTERNS
-                    )
-                    for secret_type, secrets in supp_results.items():
-                        if secret_type not in results:
-                            results[secret_type] = set()
-                        results[secret_type].update(secrets)
-                else:
-                    # Fallback to regex-only scanning
-                    file_results = scan_file_with_patterns(file_path, FALLBACK_PATTERNS)
-                    for secret_type, secrets in file_results.items():
-                        if secret_type not in results:
-                            results[secret_type] = set()
-                        results[secret_type].update(secrets)
+                # Always run built-in patterns for maximum coverage
+                builtin_results = scan_file_with_patterns(file_path, BUILTIN_PATTERNS)
+                _merge_results(results, builtin_results)
 
-                # Check for private keys (always use our pattern)
+                # Check for private keys with our pattern
                 try:
                     content = file_path.read_text(errors="ignore")
                     if PRIVATE_KEY_PATTERN.search(content):
@@ -467,12 +512,17 @@ def scan_secrets() -> None:
     print("Scanning for potential secrets in Claude Code logs...")
     print("")
 
-    # Show scanner mode
+    # Show active scanners
+    scanners = []
+    if TRUFFLEHOG_AVAILABLE:
+        scanners.append("TruffleHog")
     if DETECT_SECRETS_AVAILABLE:
-        print("Using: detect-secrets library (enhanced scanning)")
-    else:
-        print("Using: built-in patterns (install detect-secrets for enhanced scanning)")
-        print("       pip install detect-secrets")
+        scanners.append("detect-secrets")
+    scanners.append("built-in patterns")  # Always active
+
+    print(f"Scanners: {' + '.join(scanners)}")
+    if not TRUFFLEHOG_AVAILABLE and not DETECT_SECRETS_AVAILABLE:
+        print("  (install trufflehog or detect-secrets for enhanced scanning)")
     print("")
 
     # Find existing directories

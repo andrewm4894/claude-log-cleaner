@@ -520,3 +520,180 @@ class TestFalsePositiveFiltering:
         assert cleanup.is_false_positive(FAKE_SECRETS["openai_key"]) is False
         assert cleanup.is_false_positive(FAKE_SECRETS["anthropic_key"]) is False
         assert cleanup.is_false_positive(FAKE_SECRETS["aws_access_key"]) is False
+
+
+class TestTruffleHogIntegration:
+    """Tests for TruffleHog secret scanner integration."""
+
+    def test_trufflehog_availability_check(self, monkeypatch):
+        """Test that TruffleHog availability is detected correctly."""
+        # Mock shutil.which to return a path (TruffleHog installed)
+        monkeypatch.setattr("shutil.which", lambda x: "/opt/homebrew/bin/trufflehog" if x == "trufflehog" else None)
+
+        # Re-evaluate the module-level check
+        result = cleanup.shutil.which("trufflehog")
+        assert result == "/opt/homebrew/bin/trufflehog"
+
+    def test_trufflehog_not_available(self, monkeypatch):
+        """Test handling when TruffleHog is not installed."""
+        monkeypatch.setattr("shutil.which", lambda x: None)
+
+        result = cleanup.shutil.which("trufflehog")
+        assert result is None
+
+    def test_scan_with_trufflehog_parses_json(self, tmp_path, monkeypatch):
+        """Test that TruffleHog JSON output is parsed correctly."""
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+
+        # Sample TruffleHog JSON output (one finding per line)
+        # Uses DetectorName (string) and DetectorType (int) like real TruffleHog output
+        trufflehog_output = '\n'.join([
+            json.dumps({
+                "DetectorType": 2,
+                "DetectorName": "AWS",
+                "Raw": "AKIAZ9Y8X7W6V5U4T3S2",
+                "Verified": False,
+                "SourceMetadata": {"Data": {"Filesystem": {"file": str(test_dir / "creds.txt")}}}
+            }),
+            json.dumps({
+                "DetectorType": 85,
+                "DetectorName": "OpenAI",
+                "Raw": "sk-proj-TESTKEYTESTKEYTESTKEYTESTKEYTESTKEY1234",
+                "Verified": False,
+                "SourceMetadata": {"Data": {"Filesystem": {"file": str(test_dir / "env.txt")}}}
+            }),
+            json.dumps({
+                "DetectorType": 27,
+                "DetectorName": "PrivateKey",
+                "Raw": "-----BEGIN RSA PRIVATE KEY-----",
+                "Verified": False,
+                "SourceMetadata": {"Data": {"Filesystem": {"file": str(test_dir / "key.pem")}}}
+            }),
+        ])
+
+        # Mock subprocess.run
+        class MockResult:
+            stdout = trufflehog_output
+            returncode = 0
+
+        def mock_run(*args, **kwargs):
+            return MockResult()
+
+        monkeypatch.setattr("subprocess.run", mock_run)
+
+        results = cleanup.scan_with_trufflehog([test_dir])
+
+        # Verify AWS key was found
+        assert "AWS" in results
+        assert "AKIAZ9Y8X7W6V5U4T3S2" in results["AWS"]
+
+        # Verify OpenAI key was found
+        assert "OpenAI" in results
+        assert "sk-proj-TESTKEYTESTKEYTESTKEYTESTKEYTESTKEY1234" in results["OpenAI"]
+
+        # Verify private key file was found
+        assert str(test_dir / "key.pem") in results["Private Key Files"]
+
+    def test_scan_with_trufflehog_handles_timeout(self, tmp_path, monkeypatch):
+        """Test that TruffleHog timeout is handled gracefully."""
+        import subprocess
+
+        def mock_run(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd="trufflehog", timeout=300)
+
+        monkeypatch.setattr("subprocess.run", mock_run)
+
+        results = cleanup.scan_with_trufflehog([tmp_path])
+
+        # Should return empty results on timeout
+        assert results == {"Private Key Files": set()}
+
+    def test_scan_with_trufflehog_handles_not_found(self, tmp_path, monkeypatch):
+        """Test handling when TruffleHog binary not found."""
+
+        def mock_run(*args, **kwargs):
+            raise FileNotFoundError("trufflehog not found")
+
+        monkeypatch.setattr("subprocess.run", mock_run)
+
+        results = cleanup.scan_with_trufflehog([tmp_path])
+
+        # Should return empty results
+        assert results == {"Private Key Files": set()}
+
+    def test_scan_with_trufflehog_filters_false_positives(self, tmp_path, monkeypatch):
+        """Test that TruffleHog results are filtered for false positives."""
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+
+        # Output includes a known false positive (AWS example key)
+        trufflehog_output = json.dumps({
+            "DetectorType": 2,
+            "DetectorName": "AWS",
+            "Raw": "AKIAIOSFODNN7EXAMPLE",  # This is a known false positive
+            "Verified": False,
+            "SourceMetadata": {"Data": {"Filesystem": {"file": str(test_dir / "example.txt")}}}
+        })
+
+        class MockResult:
+            stdout = trufflehog_output
+            returncode = 0
+
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: MockResult())
+
+        results = cleanup.scan_with_trufflehog([test_dir])
+
+        # False positive should be filtered out
+        assert "AWS" not in results or "AKIAIOSFODNN7EXAMPLE" not in results.get("AWS", set())
+
+    def test_all_scanners_run_when_available(self, tmp_path, monkeypatch):
+        """Test that all available scanners are run for maximum coverage."""
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+        (test_dir / "secret.txt").write_text("test content")
+
+        # Track which scanner was called
+        scanners_called = []
+
+        def mock_trufflehog(dirs, verify=False):
+            scanners_called.append("trufflehog")
+            return {"Private Key Files": set()}
+
+        def mock_detect_secrets(path):
+            scanners_called.append("detect_secrets")
+            return {}
+
+        # Enable both TruffleHog and detect-secrets
+        monkeypatch.setattr(cleanup, "TRUFFLEHOG_AVAILABLE", True)
+        monkeypatch.setattr(cleanup, "DETECT_SECRETS_AVAILABLE", True)
+        monkeypatch.setattr(cleanup, "scan_with_trufflehog", mock_trufflehog)
+        monkeypatch.setattr(cleanup, "scan_file_with_detect_secrets", mock_detect_secrets)
+
+        cleanup.find_secrets_in_directories([test_dir])
+
+        # All available scanners should be called
+        assert "trufflehog" in scanners_called
+        assert "detect_secrets" in scanners_called
+
+    def test_scanner_fallback_to_detect_secrets(self, tmp_path, monkeypatch):
+        """Test fallback to detect-secrets when TruffleHog unavailable."""
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+        (test_dir / "secret.txt").write_text("test content")
+
+        scanners_called = []
+
+        def mock_detect_secrets(path):
+            scanners_called.append("detect_secrets")
+            return {}
+
+        # Disable TruffleHog, enable detect-secrets
+        monkeypatch.setattr(cleanup, "TRUFFLEHOG_AVAILABLE", False)
+        monkeypatch.setattr(cleanup, "DETECT_SECRETS_AVAILABLE", True)
+        monkeypatch.setattr(cleanup, "scan_file_with_detect_secrets", mock_detect_secrets)
+
+        cleanup.find_secrets_in_directories([test_dir])
+
+        # detect-secrets should be called
+        assert "detect_secrets" in scanners_called
