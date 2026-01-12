@@ -2,7 +2,7 @@
 
 A Claude Code plugin that automatically deletes session log files after a configurable retention period to prevent sensitive data exposure.
 
-> **The Problem:** I watched [this YouTube video](https://www.youtube.com/watch?v=TWhKGqYQT9g) and realized Claude Code stores a ton of log files locally in `~/.claude/` - files that can contain API keys, tokens, and other secrets from your sessions. That's another attack surface sitting on your laptop. This plugin helps reduce that risk by automatically cleaning up old logs and giving you easy commands to scan for exposed secrets.
+> **The Problem:** I watched [this YouTube video](https://www.youtube.com/watch?v=TWhKGqYQT9g) and freaked out a bit - Claude Code stores a ton of log files locally in `~/.claude/` - files that can contain API keys, tokens, and other secrets from your sessions. That's another attack surface sitting on your laptop. This plugin helps reduce that risk by automatically cleaning up old logs and giving you easy commands to scan for exposed secrets.
 
 ## Why This Plugin?
 
