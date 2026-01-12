@@ -119,26 +119,48 @@ def cleanup(dry_run: bool, retention_override: Optional[int] = None) -> None:
         log_info(f"Cleanup complete: {total_files} files processed")
 
 
-def get_directory_stats(directory: Path) -> Tuple[int, int]:
-    """Get file count and total size for a directory."""
+def get_directory_stats(
+    directory: Path, retention_hours: int
+) -> Tuple[int, int, int, Optional[float]]:
+    """Get file count, total size, violation count, and max age for a directory.
+
+    Returns:
+        Tuple of (file_count, total_size, violations, max_age_hours)
+        - violations: count of files older than retention period
+        - max_age_hours: age of oldest file in hours, or None if no files
+    """
     if not directory.exists():
-        return 0, 0
+        return 0, 0, 0, None
 
     file_count = 0
     total_size = 0
+    violations = 0
+    oldest_mtime: Optional[float] = None
+    now = time.time()
+    cutoff_time = now - (retention_hours * 3600)
 
     try:
         for file_path in directory.rglob("*"):
             if file_path.is_file():
                 file_count += 1
                 try:
-                    total_size += file_path.stat().st_size
+                    stat = file_path.stat()
+                    total_size += stat.st_size
+                    mtime = stat.st_mtime
+                    if oldest_mtime is None or mtime < oldest_mtime:
+                        oldest_mtime = mtime
+                    if mtime < cutoff_time:
+                        violations += 1
                 except OSError:
                     pass
     except OSError:
         pass
 
-    return file_count, total_size
+    max_age_hours = None
+    if oldest_mtime is not None:
+        max_age_hours = (now - oldest_mtime) / 3600
+
+    return file_count, total_size, violations, max_age_hours
 
 
 def show_status() -> None:
@@ -153,12 +175,38 @@ def show_status() -> None:
     print("")
     print("Directory sizes:")
 
+    total_violations = 0
+    global_max_age: Optional[float] = None
+
     for dir_name in CLEAN_DIRS:
         full_path = CLAUDE_DIR / dir_name
         if full_path.exists():
-            file_count, total_size = get_directory_stats(full_path)
+            file_count, total_size, violations, max_age = get_directory_stats(
+                full_path, retention_hours
+            )
             size_str = format_size(total_size)
-            print(f"  {dir_name}: {size_str} ({file_count} files)")
+
+            # Build status line
+            status = f"  {dir_name}: {size_str} ({file_count} files)"
+            if violations > 0:
+                status += f" ⚠️  {violations} violations"
+            print(status)
+
+            total_violations += violations
+            if max_age is not None:
+                if global_max_age is None or max_age > global_max_age:
+                    global_max_age = max_age
+
+    # Summary
+    print("")
+    if global_max_age is not None:
+        print(f"Oldest file: {global_max_age:.1f} hours ago")
+
+    if total_violations > 0:
+        print(f"⚠️  Retention violations: {total_violations} files exceed {retention_hours}h")
+        print("   Run /log-cleaner:clean to remove old files")
+    else:
+        print("✓ No retention violations")
 
 
 def set_retention(hours: int) -> None:
