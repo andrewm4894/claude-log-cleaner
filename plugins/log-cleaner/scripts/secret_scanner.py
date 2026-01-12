@@ -315,6 +315,42 @@ def _get_unique_locations(file_paths: Set[str]) -> List[str]:
     return sorted(contexts)
 
 
+def _get_secret_prefix(secret: str, prefix_len: int = 12) -> str:
+    """Get a safe prefix of a secret for display.
+
+    Shows first N characters followed by ellipsis to help identify the key
+    without exposing the full secret.
+    """
+    if len(secret) <= prefix_len:
+        return secret
+    return secret[:prefix_len] + "..."
+
+
+def _extract_project_context(file_path: str) -> str:
+    """Extract project/session context from a file path for triage.
+
+    Returns a human-readable context string like:
+    - 'projects/my-repo/session-abc123.json'
+    - 'debug/2024-01-15-abc123.log'
+    """
+    path = Path(file_path)
+    parts = path.parts
+
+    # Find the .claude directory index
+    try:
+        claude_idx = parts.index(".claude")
+    except ValueError:
+        # Fallback: just return the filename
+        return path.name
+
+    # Get path relative to .claude
+    rel_parts = parts[claude_idx + 1 :]
+    if not rel_parts:
+        return path.name
+
+    return str(Path(*rel_parts))
+
+
 def scan_secrets() -> None:
     """Scan log directories for potential secrets and print results."""
     print("Scanning for potential secrets in Claude Code logs...")
@@ -348,8 +384,9 @@ def scan_secrets() -> None:
 
     # Count total secrets found
     total_secrets = 0
+    total_files_with_secrets = set()
 
-    # Print results for each secret type found
+    # Print detailed results for each secret type found
     for secret_type in sorted(results.keys()):
         if secret_type == "Private Key Files":
             continue  # Handle separately
@@ -357,44 +394,50 @@ def scan_secrets() -> None:
         secrets_dict = results[secret_type]
         if secrets_dict:
             print(f"=== {secret_type} ===")
-            for i, (secret, file_paths) in enumerate(sorted(secrets_dict.items())[:10]):
-                # Mask middle of secret for safety
-                if len(secret) > 20:
-                    masked = secret[:10] + "..." + secret[-6:]
-                else:
-                    masked = secret
-                print(f"  {masked}")
-
-                # Show file locations (limit to 3 per secret)
-                locations = _get_unique_locations(file_paths)
-                for loc in locations[:3]:
-                    print(f"    └─ {loc}")
-                if len(locations) > 3:
-                    print(f"    └─ ... and {len(locations) - 3} more locations")
-
-            if len(secrets_dict) > 10:
-                print(f"  ... and {len(secrets_dict) - 10} more")
             print("")
+
+            for i, (secret, file_paths) in enumerate(sorted(secrets_dict.items())[:15]):
+                # Show secret prefix for identification
+                prefix = _get_secret_prefix(secret)
+                print(f"  [{i + 1}] {prefix}")
+
+                # Show all file locations for this secret
+                locations = sorted(set(_extract_project_context(fp) for fp in file_paths))
+                for loc in locations[:5]:
+                    print(f"      └─ {loc}")
+                    total_files_with_secrets.add(loc)
+                if len(locations) > 5:
+                    print(f"      └─ ... and {len(locations) - 5} more files")
+                print("")
+
+            if len(secrets_dict) > 15:
+                print(f"  ... and {len(secrets_dict) - 15} more secrets of this type")
+                print("")
             total_secrets += len(secrets_dict)
 
     # Print private key files
     key_files_dict = results.get("Private Key Files", {})
     if key_files_dict:
         print("=== Private Key Files ===")
-        for i, file_path in enumerate(sorted(key_files_dict.keys())[:5]):
-            context = _extract_context_from_path(file_path)
-            print(f"  {context}")
-        if len(key_files_dict) > 5:
-            print(f"  ... and {len(key_files_dict) - 5} more")
+        print("")
+        for i, file_path in enumerate(sorted(key_files_dict.keys())[:10]):
+            context = _extract_project_context(file_path)
+            print(f"  [{i + 1}] {context}")
+            total_files_with_secrets.add(context)
+        if len(key_files_dict) > 10:
+            print(f"  ... and {len(key_files_dict) - 10} more files")
         print("")
         total_secrets += len(key_files_dict)
 
     # Summary
-    print("=== Summary ===")
+    print("=" * 50)
+    print("SUMMARY")
+    print("=" * 50)
     if total_secrets == 0:
         print("No secrets detected.")
     else:
-        print(f"Found {total_secrets} potential secret(s).")
+        print(f"Secrets found: {total_secrets}")
+        print(f"Files affected: {len(total_files_with_secrets)}")
         print("")
         print("Recommended actions:")
         print("  1. Rotate any exposed credentials immediately")
