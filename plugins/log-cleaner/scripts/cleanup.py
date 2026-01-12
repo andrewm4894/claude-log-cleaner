@@ -134,14 +134,23 @@ def print_session_end_summary(files_cleaned: int, size_freed: int, dry_run: bool
     size_str = format_size(size_freed)
     if dry_run:
         if files_cleaned > 0:
-            print(f"[log-cleaner] Would clean {files_cleaned} files ({size_str})")
+            msg = f"[log-cleaner] Would clean {files_cleaned} files ({size_str})"
         else:
-            print("[log-cleaner] No old files to clean")
+            msg = "[log-cleaner] No old files to clean"
     else:
         if files_cleaned > 0:
-            print(f"[log-cleaner] Cleaned {files_cleaned} files ({size_str} freed)")
+            msg = f"[log-cleaner] Cleaned {files_cleaned} files ({size_str} freed)"
         else:
-            print("[log-cleaner] No old files found")
+            msg = "[log-cleaner] No old files found"
+    # Try multiple output methods to ensure visibility on session end
+    print(msg)
+    print(msg, file=sys.stderr)
+    # Also try writing directly to terminal
+    try:
+        with open("/dev/tty", "w") as tty:
+            tty.write(f"\n{msg}\n")
+    except (OSError, IOError):
+        pass
 
 
 def get_directory_stats(
