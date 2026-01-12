@@ -206,9 +206,13 @@ class TestDirectoryStats:
 
     def test_empty_directory(self, temp_claude_dir):
         """Should return zeros for empty directory."""
-        count, size = cleanup.get_directory_stats(temp_claude_dir / "debug")
+        count, size, violations, max_age = cleanup.get_directory_stats(
+            temp_claude_dir / "debug", retention_hours=24
+        )
         assert count == 0
         assert size == 0
+        assert violations == 0
+        assert max_age is None
 
     def test_counts_files_and_size(self, temp_claude_dir):
         """Should count files and sum sizes."""
@@ -218,12 +222,43 @@ class TestDirectoryStats:
         (debug_dir / "file1.log").write_text("content1")
         (debug_dir / "file2.log").write_text("content2content2")
 
-        count, size = cleanup.get_directory_stats(debug_dir)
+        count, size, violations, max_age = cleanup.get_directory_stats(
+            debug_dir, retention_hours=24
+        )
         assert count == 2
         assert size == len("content1") + len("content2content2")
+        assert violations == 0  # New files shouldn't violate
+        assert max_age is not None
+        assert max_age < 1  # Files just created, should be < 1 hour old
 
     def test_nonexistent_directory(self, temp_claude_dir):
         """Should return zeros for nonexistent directory."""
-        count, size = cleanup.get_directory_stats(temp_claude_dir / "nonexistent")
+        count, size, violations, max_age = cleanup.get_directory_stats(
+            temp_claude_dir / "nonexistent", retention_hours=24
+        )
         assert count == 0
         assert size == 0
+        assert violations == 0
+        assert max_age is None
+
+    def test_detects_retention_violations(self, temp_claude_dir):
+        """Should detect files older than retention period."""
+        import os
+
+        debug_dir = temp_claude_dir / "debug"
+
+        # Create a file
+        test_file = debug_dir / "old_file.log"
+        test_file.write_text("old content")
+
+        # Set mtime to 48 hours ago
+        old_time = time.time() - (48 * 3600)
+        os.utime(test_file, (old_time, old_time))
+
+        count, size, violations, max_age = cleanup.get_directory_stats(
+            debug_dir, retention_hours=24
+        )
+        assert count == 1
+        assert violations == 1  # File is older than 24h retention
+        assert max_age is not None
+        assert max_age >= 47  # Should be ~48 hours old
