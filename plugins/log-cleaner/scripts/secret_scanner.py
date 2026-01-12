@@ -77,6 +77,8 @@ FALSE_POSITIVE_PATTERNS = [
     re.compile(r"sk-[0-9]{20,}$"),  # All numeric after prefix
     # Test file markers
     re.compile(r"sk-(?:test|fake|mock|example|dummy|sample)[a-zA-Z0-9_-]*"),
+    # Our own scan output (truncated prefixes ending in ...)
+    re.compile(r".*\.\.\.$"),
 ]
 
 
