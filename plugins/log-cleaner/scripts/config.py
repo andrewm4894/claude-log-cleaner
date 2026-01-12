@@ -31,6 +31,7 @@ def load_config() -> Dict:
         "retention_hours": DEFAULT_RETENTION_HOURS,
         "clean_on_session_end": True,
         "dry_run": False,
+        "session_end_summary": True,
     }
 
     if not CONFIG_FILE.exists():
@@ -71,6 +72,7 @@ def create_default_config() -> None:
             "retention_hours": DEFAULT_RETENTION_HOURS,
             "clean_on_session_end": True,
             "dry_run": False,
+            "session_end_summary": True,
         }
         save_config(config)
         log_info(f"Created default config at {CONFIG_FILE}")

@@ -100,23 +100,48 @@ def clean_directory(
     return count, size_freed
 
 
-def cleanup(dry_run: bool, retention_override: Optional[int] = None) -> None:
-    """Main cleanup function."""
+def cleanup(
+    dry_run: bool, retention_override: Optional[int] = None
+) -> Tuple[int, int, int]:
+    """Main cleanup function.
+
+    Returns:
+        Tuple of (total_files, total_size, retention_hours)
+    """
     config = load_config()
     retention_hours = retention_override if retention_override else config["retention_hours"]
 
     log_info(f"Starting cleanup (retention: {retention_hours}h, dry_run: {dry_run})")
 
     total_files = 0
+    total_size = 0
 
     for dir_name in CLEAN_DIRS:
-        cleaned, _ = clean_directory(dir_name, retention_hours, dry_run)
+        cleaned, size_freed = clean_directory(dir_name, retention_hours, dry_run)
         total_files += cleaned
+        total_size += size_freed
 
     if total_files == 0:
         log_info(f"No files older than {retention_hours}h found")
     else:
         log_info(f"Cleanup complete: {total_files} files processed")
+
+    return total_files, total_size, retention_hours
+
+
+def print_session_end_summary(files_cleaned: int, size_freed: int, dry_run: bool) -> None:
+    """Print a summary message for session end hook output."""
+    size_str = format_size(size_freed)
+    if dry_run:
+        if files_cleaned > 0:
+            print(f"[log-cleaner] Would clean {files_cleaned} files ({size_str})")
+        else:
+            print("[log-cleaner] No old files to clean")
+    else:
+        if files_cleaned > 0:
+            print(f"[log-cleaner] Cleaned {files_cleaned} files ({size_str} freed)")
+        else:
+            print("[log-cleaner] No old files found")
 
 
 def get_directory_stats(
@@ -289,10 +314,14 @@ Configuration:
     if args.command == "clean":
         # Use config dry_run as default if CLI flag not provided
         dry_run = args.dry_run
+        config = load_config()
         if not dry_run:
-            config = load_config()
             dry_run = config.get("dry_run", False)
-        cleanup(dry_run, args.hours)
+        files_cleaned, size_freed, _ = cleanup(dry_run, args.hours)
+
+        # Print summary on session end if enabled
+        if getattr(args, "session_end", False) and config.get("session_end_summary", True):
+            print_session_end_summary(files_cleaned, size_freed, dry_run)
     elif args.command == "status":
         show_status()
     elif args.command == "set-retention":
