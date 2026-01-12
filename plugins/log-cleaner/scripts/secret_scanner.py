@@ -405,9 +405,10 @@ def scan_secrets() -> None:
 
                 # Show all file locations for this secret
                 locations = sorted(set(_extract_project_context(fp) for fp in file_paths))
+                # Track ALL affected files, not just displayed ones
+                total_files_with_secrets.update(locations)
                 for loc in locations[:5]:
                     print(f"      └─ {loc}")
-                    total_files_with_secrets.add(loc)
                 if len(locations) > 5:
                     print(f"      └─ ... and {len(locations) - 5} more files")
                 print("")
@@ -422,10 +423,13 @@ def scan_secrets() -> None:
     if key_files_dict:
         print("=== Private Key Files ===")
         print("")
-        for i, file_path in enumerate(sorted(key_files_dict.keys())[:10]):
-            context = _extract_project_context(file_path)
+        # Track ALL affected files, not just displayed ones
+        all_key_file_contexts = [
+            _extract_project_context(fp) for fp in key_files_dict.keys()
+        ]
+        total_files_with_secrets.update(all_key_file_contexts)
+        for i, context in enumerate(sorted(all_key_file_contexts)[:10]):
             print(f"  [{i + 1}] {context}")
-            total_files_with_secrets.add(context)
         if len(key_files_dict) > 10:
             print(f"  ... and {len(key_files_dict) - 10} more files")
         print("")
