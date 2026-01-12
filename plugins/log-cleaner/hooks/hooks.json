@@ -1,8 +1,8 @@
 {
+  "description": "Log cleaner hooks - cleanup on session end",
   "hooks": {
     "SessionEnd": [
       {
-        "matcher": "",
         "hooks": [
           {
             "type": "command",
